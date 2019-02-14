@@ -69,6 +69,7 @@ static int decode_packet(int *got_frame, int cached)
     *got_frame = 0;
 
     if (pkt.stream_index == video_stream_idx) {
+        // printf("video_packet_pts: %ld\n", pkt.pts);
         /* decode video frame */
         ret = avcodec_decode_video2(video_dec_ctx, frame, got_frame, &pkt);
         if (ret < 0) {
@@ -109,6 +110,7 @@ static int decode_packet(int *got_frame, int cached)
             fwrite(video_dst_data[0], 1, video_dst_bufsize, video_dst_file);
         }
     } else if (pkt.stream_index == audio_stream_idx) {
+        // printf("audio_packet_pts: %ld\n", pkt.pts);
         /* decode audio frame */
         ret = avcodec_decode_audio4(audio_dec_ctx, frame, got_frame, &pkt);
         if (ret < 0) {

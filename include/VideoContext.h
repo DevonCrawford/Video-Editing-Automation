@@ -1,3 +1,6 @@
+#ifndef _VIDEOCONTEXT_API_
+#define _VIDEOCONTEXT_API_
+
 #include <stdio.h>
 #include <libavformat/avformat.h>
 
@@ -9,6 +12,9 @@ typedef struct VideoContext {
 } VideoContext;
 
 # define VIDEO_CONTEXT_STREAM_TYPES_LEN 2
+
+AVStream *get_video_stream(VideoContext *vid_ctx);
+AVStream *get_audio_stream(VideoContext *vid_ctx);
 /*
     out @param vid_ctx - allocated context containing format, streams and codecs
     in @param filename - name of video file
@@ -29,3 +35,5 @@ int open_codec_context(VideoContext *vid_ctx, enum AVMediaType type);
 void init_video_context(VideoContext *vid_ctx);
 
 void free_video_context(VideoContext *vid_ctx);
+
+#endif

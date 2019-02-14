@@ -12,7 +12,7 @@ This project uses the [ffmpeg](https://ffmpeg.org/ffmpeg.html) library to handle
 of the heavy lifting of video processing, and intends to
 build a library ontop of ffmpeg without changing the ffmpeg source code.
 This project and its functions are their own isolated work (unless stated otherwise), however they do require linking with ffmpeg to operate correctly.
-[View the ffmpeg source code](https://github.com/FFmpeg/FFmpeg)
+[View the ffmpeg source code](https://github.com/FFmpeg/FFmpeg) or 
 [Read the compilation guide](https://trac.ffmpeg.org/wiki/CompilationGuide/Generic)
 
 If you would like to run this code you need to first install ffmpeg by compiling

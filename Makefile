@@ -69,13 +69,14 @@ clean-examples-ffmpeg:
 clean-src:
 	$(RM) $(SRC_OBJS)
 
-clean: clean-examples clean-examples-ffmpeg clean-src
+clean:
+	rm -rf $(BIN_DIR)/*
 
 DBE=$(BIN_EXAMPLES_DIR)
 .SECONDEXPANSION:
 # EXAMPLES
 # No need to change target, just change first assignment of CUT_OBJS
 # So long as target is the basename of an example file.. it will include all required .o files.
-CUT_DEP_OBJS=videoContext
-cut: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(CUT_DEP_OBJS))
+CUT_DEP_OBJS=VideoContext Timebase Clip
+test-clip: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(CUT_DEP_OBJS))
 	$(CC) $(CFLAGS) -o $(DBE)/$@ $^ $(LDLIBS)

@@ -1,4 +1,5 @@
-#include "videoContext.h"
+#include "Timebase.h"
+#include "Clip.h"
 
 int cut_range(AVFormatContext *fmt_ctx, int64_t startFrame, int64_t endFrame);
 int cut(AVFormatContext *fmt_ctx, int64_t startFrame, int64_t duration);
@@ -16,6 +17,22 @@ int main(int argc, char **argv) {
 
     printf("video_dec_ctx->width: %d\n", vid_ctx.video_dec_ctx->width);
     printf("video_dec_ctx->height: %d\n", vid_ctx.video_dec_ctx->height);
+
+    printf("num: %d, den: %d\n", audio_stream->time_base.num, audio_stream->time_base.den);
+    printf("start_time: %ld\n", audio_stream->nb_frames);
+    int64_t video_pts = get_video_frame_pts(&vid_ctx, 177);
+    int64_t audio_pts = get_audio_frame_pts(&vid_ctx, 177);
+    printf("video_pts: %ld\n", video_pts);
+    printf("audio_pts: %ld\n", audio_pts);
+
+    Clip clip;
+    init_clip(&clip, argv[1]);
+    open_clip(&clip);
+    set_clip_bounds(&clip, (uint64_t)atoi(argv[2]), (uint64_t)atoi(argv[3]));
+    printf("end_frame_idx: %ld\n", get_clip_end_frame_idx(&clip));
+    example_clip_read_packets(&clip);
+    close_clip(&clip);
+    free_clip(&clip);
 
     // free video context
     free_video_context(&vid_ctx);

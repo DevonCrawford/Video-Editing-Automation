@@ -1,4 +1,12 @@
-#include "videoContext.h"
+#include "VideoContext.h"
+
+AVStream *get_video_stream(VideoContext *vid_ctx) {
+    return vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_idx];
+}
+
+AVStream *get_audio_stream(VideoContext *vid_ctx) {
+    return vid_ctx->fmt_ctx->streams[vid_ctx->audio_stream_idx];
+}
 
 void init_video_context(VideoContext *vid_ctx) {
     vid_ctx->fmt_ctx = NULL;
@@ -28,6 +36,10 @@ int open_video(VideoContext *vid_ctx, char *filename) {
         if((ret = open_codec_context(vid_ctx, types[i])) < 0) {
             return ret;
         }
+        if(ret == 1 && types[i] == AVMEDIA_TYPE_VIDEO) {
+            fprintf(stderr, "Video stream is required and could not be found");
+            return -1;
+        }
     }
     return 0;
 }
@@ -42,7 +54,7 @@ int open_format_context(VideoContext *vid_ctx, char *filename) {
     }
     // retrieve stream information
     if(avformat_find_stream_info(vid_ctx->fmt_ctx, NULL) < 0) {
-        fprintf(stderr, "Could not find stream information for file %s\n", filename);
+        fprintf(stderr, "Could not find stream information for file [%s]\n", filename);
         return -1;
     }
     return 0;
@@ -64,12 +76,13 @@ int open_codec_context(VideoContext *vid_ctx, enum AVMediaType type) {
     AVFormatContext *fmt_ctx = vid_ctx->fmt_ctx;
     AVDictionary *opts = NULL;
     int ret, refcount = 0;
+
     // finds the stream index given an AVMediaType (and gets decoder *dec on success)
     int stream_index = av_find_best_stream(fmt_ctx, type, -1, -1, &dec, 0);
     if(stream_index < 0) {
         fprintf(stderr, "Could not find %s stream in input file '%s'\n",
                 av_get_media_type_string(type), fmt_ctx->url);
-        return stream_index;
+        return 1;
     } else {
         /* Create decoding context */
         dec_ctx = avcodec_alloc_context3(dec);

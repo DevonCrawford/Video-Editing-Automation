@@ -15,6 +15,8 @@ typedef struct VideoContext {
 
 AVStream *get_video_stream(VideoContext *vid_ctx);
 AVStream *get_audio_stream(VideoContext *vid_ctx);
+AVRational get_video_time_base(VideoContext *vid_ctx);
+AVRational get_audio_time_base(VideoContext *vid_ctx);
 /*
     out @param vid_ctx - allocated context containing format, streams and codecs
     in @param filename - name of video file

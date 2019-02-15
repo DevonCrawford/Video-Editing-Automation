@@ -25,14 +25,17 @@ int main(int argc, char **argv) {
     printf("video_pts: %ld\n", video_pts);
     printf("audio_pts: %ld\n", audio_pts);
 
-    Clip clip;
-    init_clip(&clip, argv[1]);
-    open_clip(&clip);
-    set_clip_bounds(&clip, (uint64_t)atoi(argv[2]), (uint64_t)atoi(argv[3]));
-    printf("end_frame_idx: %ld\n", get_clip_end_frame_idx(&clip));
-    example_clip_read_packets(&clip);
-    close_clip(&clip);
-    free_clip(&clip);
+    printf("video_time_base_num: %d, video_time_base_den: %d\n", video_stream->time_base.num, video_stream->time_base.den);
+
+
+    // Clip clip;
+    // init_clip(&clip, argv[1]);
+    // open_clip(&clip);
+    // set_clip_bounds(&clip, (uint64_t)atoi(argv[2]), (uint64_t)atoi(argv[3]));
+    // printf("end_frame_idx: %ld\n", get_clip_end_frame_idx(&clip));
+    // example_clip_read_packets(&clip);
+    // close_clip(&clip);
+    // free_clip(&clip);
 
     // free video context
     free_video_context(&vid_ctx);

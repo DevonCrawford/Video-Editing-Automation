@@ -20,11 +20,14 @@ int init_clip(Clip *clip, char *url) {
     }
     init_video_context(vid_ctx);
     clip->vid_ctx = vid_ctx;
-    clip->start_frame_pts = 0;
-    clip->end_frame_pts = -1;
-    clip->pts = 0;
-    clip->current_frame_idx = 0;
+    clip->orig_start_pts = 0;
+    clip->orig_end_pts = -1;
     clip->open = false;
+    clip->current_frame_idx = 0;
+    clip->start_pts = -1;
+    clip->end_pts = -1;
+    clip->done_reading_video = false;
+    clip->done_reading_audio = false;
     return 0;
 }
 
@@ -40,7 +43,8 @@ int open_clip(Clip *clip) {
             return ret;
         }
         clip->open = true;
-        clip->end_frame_pts = get_video_stream(clip->vid_ctx)->duration;
+        clip->orig_start_pts = 0;
+        clip->orig_end_pts = get_video_stream(clip->vid_ctx)->duration;
         init_internal_vars(clip);
     }
     return 0;
@@ -92,12 +96,12 @@ int set_clip_start_frame(Clip *clip, int64_t frameIndex) {
     Return >= 0 on success
 */
 int set_clip_start(Clip *clip, int64_t pts) {
-    if(pts < 0 || pts > clip->end_frame_pts) {
+    if(pts < 0 || pts > clip->orig_end_pts) {
         return -1;
     }
     int ret = seek_video_pts(clip->vid_ctx, pts);
     if(ret >= 0) {
-        clip->start_frame_pts = ret;
+        clip->orig_start_pts = ret;
         clip->current_frame_idx = ret;
     }
     return ret;
@@ -118,7 +122,7 @@ int set_clip_end(Clip *clip, int64_t pts) {
     if(pts < 0) {
         return -1;
     }
-    clip->end_frame_pts = pts;
+    clip->orig_end_pts = pts;
     return 0;
 }
 
@@ -132,16 +136,25 @@ int seek_clip(Clip *clip, int64_t seekFrameIndex) {
     if(pts < 0) {
         return -1;
     }
-    pts += clip->start_frame_pts;
-    if(pts > clip->end_frame_pts) {
+    return seek_clip_pts(clip, pts);
+}
+
+/**
+    Seek to a clip frame, relative to the clip.
+    @param Clip: clip to seek
+    @param pts: relative pts to the clip (where zero represents clip->orig_start_pts)
+*/
+int seek_clip_pts(Clip *clip, int64_t pts) {
+    // get absolute index (so ffmpeg can seek on video file)
+    pts += clip->orig_start_pts;
+    if(pts > clip->orig_end_pts) {
         int64_t endBound = get_clip_end_frame_idx(clip);
-        fprintf(stderr, "seek frame[%ld] out of clip bounds (0 - %ld)\n",
-                                seekFrameIndex, endBound);
+        fprintf(stderr, "seek pts[%ld] outside of clip bounds (0 - %ld)\n", pts, endBound);
         return -1;
     }
     int ret;
     if((ret = seek_video_pts(clip->vid_ctx, pts)) < 0) {
-        fprintf(stderr, "Failed to seek to frame[%ld] on clip[%s]\n", seekFrameIndex, clip->url);
+        fprintf(stderr, "Failed to seek to pts[%ld] on clip[%s]\n", pts, clip->url);
         return ret;
     }
     if((ret = cov_video_pts(clip->vid_ctx, pts)) < 0) {
@@ -153,12 +166,33 @@ int seek_clip(Clip *clip, int64_t seekFrameIndex) {
 }
 
 /**
+ * Gets absolute pts for clip (the pts of original video file)
+ * @param  clip         Clip
+ * @param  relative_pts pts relative to clip (where zero represents clip->orig_start_pts)
+ * @return              absolute pts of clip. (relative to original video file)
+ */
+int64_t get_abs_clip_pts(Clip *clip, int64_t relative_pts) {
+    return relative_pts + clip->orig_start_pts;
+}
+
+/**
+ * Convert absolute pts (from VideoContext), into a pts relative to the Clip bounds
+ * @param  clip    Clips
+ * @param  abs_pts absolute pts (relative to original video)
+ * @return         abs_pts - clip->orig_start_pts
+ *                 >= 0 if abs_pts is within start boundary
+ */
+int64_t cov_clip_pts_relative(Clip *clip, int64_t abs_pts) {
+    return abs_pts - clip->orig_start_pts;
+}
+
+/**
     Gets index of last frame in clip
     @param clip: Clip to get end frame
     Return >= 0 on success
 */
 int64_t get_clip_end_frame_idx(Clip* clip) {
-    return cov_video_pts(clip->vid_ctx, clip->end_frame_pts - clip->start_frame_pts);
+    return cov_video_pts(clip->vid_ctx, clip->orig_end_pts - clip->orig_start_pts);
 }
 
 /**
@@ -203,7 +237,7 @@ int clip_read_packet(Clip *clip, AVPacket *pkt) {
         }
     } while(done_curr_pkt_stream(clip, &tmpPkt));   // Skip by packets from finished stream
 
-    int64_t video_end_pts = clip->end_frame_pts;
+    int64_t video_end_pts = clip->orig_end_pts;
     int64_t audio_end_pts = cov_video_to_audio_pts(vid_ctx, video_end_pts);
     if(tmpPkt.stream_index == vid_ctx->video_stream_idx) {
         // If packet is past the end_frame_pts (outside of clip)
@@ -271,6 +305,45 @@ void init_internal_vars(Clip *clip) {
 }
 
 /**
+ * Compare two clips based on pts
+ * @param  first  First clip to compare
+ * @param  second Second clip to compare
+ * @return        > 0 if first->pts > second->pts.  (first after second)
+ *                < 0 if first->pts < second->pts.  (second after first)
+ *                  0 if first->pts = second->pts.  (first and second at same pts)
+ */
+int64_t compare_clips(Clip *first, Clip *second) {
+    return first->start_pts - second->start_pts;
+}
+
+/**
+ * Get time_base of clip video stream
+ * @param  clip Clip
+ * @return      time_base of clip video stream
+ */
+AVRational get_clip_video_time_base(Clip *clip) {
+    return get_video_time_base(clip->vid_ctx);
+}
+
+/**
+ * Get video stream from clip
+ * @param  clip Clip containing VideoContext
+ * @return      video AVStream on success, NULL on failure
+ */
+AVStream *get_clip_video_stream(Clip *clip) {
+    return get_video_stream(clip->vid_ctx);
+}
+
+/**
+ * Get audio stream from clip
+ * @param  clip Clip containing VideoContext
+ * @return      audio AVStream on success, NULL on failure
+ */
+AVStream *get_clip_audio_stream(Clip *clip) {
+    return get_audio_stream(clip->vid_ctx);
+}
+
+/**
     Frees data within clip structure (does not free Clip allocation itself)
 */
 void free_clip(Clip *clip) {
@@ -283,6 +356,68 @@ void free_clip(Clip *clip) {
     clip->url = NULL;
 }
 
+/*************** LINKED LIST FUNCTIONS ***************/
+/**
+ * Get data about a clip in a string
+ * @param  toBePrinted Clip containing data
+ * @return             data in string
+ */
+char *list_print_clip(void *toBePrinted) {
+    char *str;
+    if(toBePrinted == NULL) {
+        str = malloc(sizeof(char));
+        str[0] = 0;
+    } else {
+        Clip *clip = (Clip *) toBePrinted;
+        char buf[1024];
+        sprintf(buf, "ptr: %ld\nstart_frame_pts: %ld\nend_frame_pts: %ld\n",
+                        clip->start_pts, clip->orig_start_pts, clip->orig_end_pts);
+        char *str = malloc(sizeof(char) * (strlen(buf) + 1));
+        strcpy(str, buf);
+    }
+    return str;
+}
+
+/**
+ * Free clip memory and all its data. Assumes clip was allocated on heap.
+ * @param toBeDeleted Clip structure allocated on heap
+ */
+void list_delete_clip(void *toBeDeleted) {
+    if(toBeDeleted == NULL) {
+        return;
+    }
+    Clip *clip = (Clip *) toBeDeleted;
+    free_clip(clip);
+    free(clip);
+}
+
+/**
+ * Compare two clips within a linked list (uses compare_clips() internally)
+ * @param  first  first clip to compare
+ * @param  second second clip to compare
+ * @return        > 0 if first->pts > second->pts.  (first after second)
+ *                < 0 if first->pts < second->pts.  (second after first)
+ *                  0 if first->pts = second->pts.  (first and second at same pts)
+ */
+int list_compare_clips(const void *first, const void *second) {
+    if(first == NULL || second == NULL) {
+        fprintf(stderr, "ERROR: compare clips param cannot be NULL\n");
+        return -1;
+    }
+    Clip *clip1 = (Clip *) first;
+    Clip *clip2 = (Clip *) second;
+    int64_t diff = compare_clips(clip1, clip2);
+    if(diff > 0) {
+        return 1;
+    } else if(diff < 0) {
+        return -1;
+    } else {
+        return 0;
+    }
+}
+
+
+/*************** EXAMPLE FUNCTIONS ***************/
 /**
  * Test example showing how to read packets from clips
  * @param clip Clip

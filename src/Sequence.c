@@ -2,19 +2,23 @@
 
 /**
  * Initialize new sequence and list of clips
- * @param  sequence Sequence is assumed to already be allocated memory
- * @return          >= 0 on success
+ * @param  sequence     Sequence is assumed to already be allocated memory
+ * @param  video_tb     time_base of the video stream (usually 1000 per frame, 30fps would be 1/30000)
+ * @param  audio_tb     time_base of the audio stream (in Hz, ex. 1/48000)
+ * @param  fps          frames per second
+ * @return              >= 0 on success
  */
-int init_sequence(Sequence *sequence, AVRational time_base, double fps) {
-    if(sequence == NULL) {
+int init_sequence(Sequence *seq, AVRational video_tb, AVRational audio_tb, double fps) {
+    if(seq == NULL) {
         fprintf(stderr, "sequence is NULL, cannot initialize");
         return -1;
     }
-    sequence->clips = initializeList(&list_print_clip, &list_delete_clip, &list_compare_clips);
-    sequence->clips_iter = createIterator(sequence->clips);
-    sequence->time_base = time_base;
-    sequence->fps = fps;
-    sequence->video_frame_duration = time_base.den / fps;
+    seq->clips = initializeList(&list_print_clip, &list_delete_clip, &list_compare_clips);
+    seq->clips_iter = createIterator(seq->clips);
+    seq->video_time_base = video_tb;
+    seq->audio_time_base = audio_tb;
+    seq->fps = fps;
+    seq->video_frame_duration = video_tb.den / fps;
     return 0;
 }
 
@@ -111,7 +115,11 @@ int64_t seq_frame_within_clip(Sequence *seq, Clip *clip, int frame_index) {
     // if sequence frame is within the clip
     if(pts_diff >= 0 && seq_pts <= clip->end_pts) {
         // convert relative pts to clip time_base
-        return av_rescale_q(pts_diff, seq->time_base, get_clip_video_time_base(clip));
+        AVRational clip_tb = get_clip_video_time_base(clip);
+        if(clip_tb.num < 0 || clip_tb.den < 0) {
+            return -1;
+        }
+        return av_rescale_q(pts_diff, seq->video_time_base, clip_tb);
     } else {
         return -1;
     }
@@ -128,14 +136,16 @@ int sequence_seek(Sequence *seq, int frame_index) {
     ListIterator it = createIterator(seq->clips);
     while((curr = nextElement(&it)) != NULL) {
         Clip *clip = (Clip *) curr;
+        open_clip(clip);
         int64_t clip_pts;
         // If clip is found at this frame index (in sequence)
-        if((clip_pts = seq_frame_within_clip(seq, clip, frame_index)) > 0) {
-            Clip *previous = (Clip *) seq->clips_iter.current->data;
-            // If clips are different, close current and open next clip
-            if(compare_clips(clip, previous) != 0) {
-                close_clip(previous);
-                open_clip(clip);
+        if((clip_pts = seq_frame_within_clip(seq, clip, frame_index)) >= 0) {
+            if(seq->clips_iter.current != NULL) {
+                Clip *previous = (Clip *) seq->clips_iter.current->data;
+                // If clips are different, close current and open next clip
+                if(compare_clips(clip, previous) != 0) {
+                    close_clip(previous);
+                }
             }
             seq->clips_iter.current = it.current->previous;
             // seek to the correct pts within the clip!
@@ -155,9 +165,15 @@ int sequence_seek(Sequence *seq, int frame_index) {
  * (call this function in a loop while >= 0 to get full edit)
  * @param  seq Sequence containing clips
  * @param  pkt output AVPacket
- * @return     >= 0 on success, < 0 when reached end of sequence or error.
+ * @param close_clips when true, each clip will be closed at the end of its read cycle (and reopened if read again)
+ *          closing clips after usage will save memory (RAM) but take more clock cycles.
+ *          it takes roughly 10ms to open a clip.
+ *          maybe the most CPU efficient solution is opening the clips before usage of this function (and keeping them open for a while).
+ *          However, there is the concern that opening many clips will use too much RAM
+ *          (closing clips after usage would solve this issue)
+ * @return     >= 0 on success (returns packet.stream_index), < 0 when reached end of sequence or error.
  */
-int sequence_read_packet(Sequence *seq, AVPacket *pkt) {
+int sequence_read_packet(Sequence *seq, AVPacket *pkt, bool close_clips_flag) {
     Node *currNode = seq->clips_iter.current;
     if(currNode == NULL) {
         printf("sequence_read_packet() currNode == NULL\n");
@@ -169,27 +185,35 @@ int sequence_read_packet(Sequence *seq, AVPacket *pkt) {
     // End of clip!
     if(ret < 0) {
         printf("End of clip[%s]\n", curr_clip->url);
-        ret = seek_clip_pts(curr_clip, 0);                   // reset clip to start (for next time)
-        if(ret < 0) {
-            fprintf(stderr, "Failed to seek clip[%s] to its beginning\n", curr_clip->url);
-            return ret;
+        if(close_clips_flag) {
+            close_clip(curr_clip);
         }
-        close_clip(curr_clip);
-        void *next = nextElement(&(seq->clips_iter));       // get next clip
+        // move iterator to next element
+        nextElement(&(seq->clips_iter));
+        void *next = seq->clips_iter.current;       // get next clip Node
         if(next == NULL) {
             // We're done reading all clips! (reset to start)
-            seq->clips_iter.current = seq->clips.head;
+            printf("We're done reading all clips! (reset to start)\n");
+            sequence_seek(seq, 0);
             return -1;
         } else {
             // move onto next clip
-            Clip *next_clip = (Clip *) next;
+            Clip *next_clip = (Clip *) ((Node *)next)->data;
             open_clip(next_clip);
-            return sequence_read_packet(seq, pkt);
+            return sequence_read_packet(seq, pkt, close_clips_flag);
         }
     } else {
+        // Convert original packet timestamps into sequence timestamps
+        if(tmpPkt.stream_index == curr_clip->vid_ctx->video_stream_idx) {
+            tmpPkt.pts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
+            tmpPkt.dts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
+        } else if(tmpPkt.stream_index == curr_clip->vid_ctx->audio_stream_idx) {
+            tmpPkt.pts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
+            tmpPkt.dts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
+        }
         // valid packet down here
         *pkt = tmpPkt;
-        return 0;
+        return tmpPkt.stream_index;
     }
 }
 
@@ -221,7 +245,7 @@ void move_clip_pts(Sequence *seq, Clip *clip, int64_t start_pts) {
     // Automatically set the end_pts to the duration of the clip (which is set by set_clip_bounds())
     int64_t clip_dur = clip->orig_end_pts - clip->orig_start_pts;
     int64_t seq_dur = av_rescale_q(clip_dur, get_clip_video_time_base(clip),
-                                             seq->time_base);
+                                             seq->video_time_base);
     clip->end_pts = start_pts + seq_dur;
 }
 
@@ -240,6 +264,48 @@ Clip *get_current_clip(Sequence *seq) {
 }
 
 /**
+ * Convert a raw packet timestamp into a sequence timestamp
+ * @param  seq          Sequence containing clip
+ * @param  clip         Clip within sequence
+ * @param  orig_pkt_ts  timestamp from AVPacket read directly from file (or clip_read_packet())
+ * @return              timestamp representation of the video packet in the editing sequence!
+ */
+int64_t video_pkt_to_seq_ts(Sequence *seq, Clip *clip, int64_t orig_pkt_ts) {
+    int64_t clip_ts = clip_ts_video(clip, orig_pkt_ts);
+    AVRational clip_tb = get_clip_video_time_base(clip);
+    if(clip_tb.num < 0 || clip_tb.den < 0) {
+        fprintf(stderr, "video time_base is invalid for clip[%s]\n", clip->url);
+        return -1;
+    }
+    // rescale clip_ts to sequence time_base
+    int64_t seq_ts = av_rescale_q(clip_ts, clip_tb, seq->video_time_base);
+    // add clip starting point in sequence
+    return clip->start_pts + seq_ts;
+}
+
+/**
+ * Convert a raw packet timestamp into a sequence timestamp
+ * @param  seq          Sequence containing clip
+ * @param  clip         Clip within sequence
+ * @param  orig_pkt_ts  timestamp from AVPacket read directly from file (or clip_read_packet())
+ * @return              timestamp representation of the audio packet in the editing sequence!
+ */
+int64_t audio_pkt_to_seq_ts(Sequence *seq, Clip *clip, int64_t orig_pkt_ts) {
+    int64_t clip_ts = clip_ts_audio(clip, orig_pkt_ts);
+    AVRational clip_tb = get_clip_audio_time_base(clip);
+    if(clip_tb.num < 0 || clip_tb.den < 0) {
+        fprintf(stderr, "audio time_base is invalid for clip[%s]\n", clip->url);
+        return -1;
+    }
+    // rescale clip_ts into sequence time_base
+    int64_t seq_ts = av_rescale_q(clip_ts, clip_tb, seq->audio_time_base);
+    // rescale clip start_pts from video to audio time_base (in sequence)
+    int64_t audio_start_ts = av_rescale_q(clip->start_pts, seq->video_time_base, seq->audio_time_base);
+    // add clip starting point in sequence
+    return audio_start_ts + seq_ts;
+}
+
+/**
  * Free entire sequence and all clips within
  * @param seq Sequence containing clips and clip data to be freed
  */
@@ -252,9 +318,9 @@ void free_sequence(Sequence *seq) {
  * Test example showing how to read packets from sequence
  * @param seq Sequence to read
  */
-void example_sequence_read_packets(Sequence *seq) {
+void example_sequence_read_packets(Sequence *seq, bool close_clips_flag) {
     AVPacket pkt;
-    while(sequence_read_packet(seq, &pkt) >= 0) {
+    while(sequence_read_packet(seq, &pkt, close_clips_flag) >= 0) {
         AVPacket orig_pkt = pkt;
         Clip *clip = get_current_clip(seq);
         if(clip == NULL) {
@@ -263,10 +329,10 @@ void example_sequence_read_packets(Sequence *seq) {
             printf("clip: %s | ", clip->url);
 
             if(pkt.stream_index == clip->vid_ctx->video_stream_idx) {
-                printf("Video packet! pts: %ld, frame: %ld\n", pkt.pts,
+                printf("Video packet! pts: %ld, dts: %ld, frame: %ld\n", pkt.pts, pkt.dts,
                         cov_video_pts(clip->vid_ctx, pkt.pts));
             } else if(pkt.stream_index == clip->vid_ctx->audio_stream_idx) {
-                printf("Audio packet! pts: %ld\n", pkt.pts);
+                printf("Audio packet! pts: %ld, dts: %ld\n", pkt.pts, pkt.dts);
             }
         }
         av_packet_unref(&orig_pkt);

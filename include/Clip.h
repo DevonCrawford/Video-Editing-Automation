@@ -30,6 +30,8 @@ typedef struct Clip {
         pts on original packets to find start and end frames.
         for videos.. this is the pts of video stream, for audio
         its the pts of audio stream.
+        You can use cov_video_to_audio_pts() in Timebase.c to convert these
+        video pts into the equivalent audio pts!
         IMPORTANT:
         time_base: same as VideoContext video_stream time_base
     */
@@ -143,6 +145,22 @@ int64_t get_abs_clip_pts(Clip *clip, int64_t relative_pts);
 int64_t cov_clip_pts_relative(Clip *clip, int64_t abs_pts);
 
 /**
+ * Convert raw video packet timestamp into clip relative pts
+ * @param  clip    Clip
+ * @param  pkt_pts raw packet pts from original video file
+ * @return         pts relative to clip video
+ */
+int64_t clip_ts_video(Clip *clip, int64_t pkt_ts);
+
+/**
+ * Convert raw video packet timestamp into clip relative audio pts
+ * @param  clip    Clip
+ * @param  pkt_pts raw packet pts from original video file (in video timebase)
+ * @return         pts relative to clip audio timebase
+ */
+int64_t clip_ts_audio(Clip *clip, int64_t pkt_ts);
+
+/**
     Gets index of last frame in clip
     @param clip: Clip to get end frame
     Return >= 0 on success
@@ -201,6 +219,13 @@ int64_t compare_clips(Clip *first, Clip *second);
  * @return      time_base of clip video stream
  */
 AVRational get_clip_video_time_base(Clip *clip);
+
+/**
+ * Get time_base of clip audio stream
+ * @param  clip Clip
+ * @return      time_base of clip audio stream
+ */
+AVRational get_clip_audio_time_base(Clip *clip);
 
 /**
  * Get video stream from clip

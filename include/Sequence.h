@@ -29,7 +29,7 @@ typedef struct Sequence {
     /*
         This is the fundamental unit of time (in seconds) in terms of which frame timestamps are represented.
      */
-    AVRational time_base;
+    AVRational video_time_base, audio_time_base;
     /*
         Video frames per second.
      */
@@ -54,10 +54,13 @@ typedef struct Sequence {
 
 /**
  * Initialize new sequence and list of clips
- * @param  sequence Sequence is assumed to already be allocated memory
- * @return          >= 0 on success
+ * @param  sequence     Sequence is assumed to already be allocated memory
+ * @param  video_tb     time_base of the video stream
+ * @param  audio_tb     time_base of the audio stream
+ * @param  fps          frames per second
+ * @return              >= 0 on success
  */
-int init_sequence(Sequence *sequence, AVRational time_base, double fps);
+int init_sequence(Sequence *seq, AVRational video_tb, AVRational audio_tb, double fps);
 
 /**
  * Insert Clip in sequence in sorted clip->pts order
@@ -130,9 +133,13 @@ int sequence_seek(Sequence *seq, int frame_index);
  * (call this function in a loop while >= 0 to get full edit)
  * @param  seq Sequence containing clips
  * @param  pkt output AVPacket
+ * @param close_clips when true, each clip will be closed at the end of its read cycle (and reopened if read again)
+ *          closing clips after usage will save memory (RAM) but take more clock cycles.
+ *          it takes roughly 10ms to open a clip.
+ *          maybe the most CPU efficient solution is opening the clips before usage of this function (and keeping them open for a while)
  * @return     >= 0 on success, < 0 when reached end of sequence or error.
  */
-int sequence_read_packet(Sequence *seq, AVPacket *pkt);
+int sequence_read_packet(Sequence *seq, AVPacket *pkt, bool close_clips_flag);
 
 /**
  * Sets the start_pts of a clip in sequence
@@ -160,6 +167,24 @@ void move_clip_pts(Sequence *seq, Clip *clip, int64_t start_pts);
 Clip *get_current_clip(Sequence *seq);
 
 /**
+ * Convert a raw packet timestamp into a sequence timestamp
+ * @param  seq          Sequence containing clip
+ * @param  clip         Clip within sequence
+ * @param  orig_pkt_ts  timestamp from AVPacket read directly from file (or clip_read_packet())
+ * @return              timestamp representation of the video packet in the editing sequence!
+ */
+int64_t video_pkt_to_seq_ts(Sequence *seq, Clip *clip, int64_t orig_pkt_ts);
+
+/**
+ * Convert a raw packet timestamp into a sequence timestamp
+ * @param  seq          Sequence containing clip
+ * @param  clip         Clip within sequence
+ * @param  orig_pkt_ts  timestamp from AVPacket read directly from file (or clip_read_packet())
+ * @return              timestamp representation of the audio packet in the editing sequence!
+ */
+int64_t audio_pkt_to_seq_ts(Sequence *seq, Clip *clip, int64_t orig_pkt_ts);
+
+/**
  * Free entire sequence and all clips within
  * @param seq Sequence containing clips and clip data to be freed
  */
@@ -170,6 +195,6 @@ void free_sequence(Sequence *seq);
  * Test example showing how to read packets from sequence
  * @param seq Sequence to read
  */
-void example_sequence_read_packets(Sequence *seq);
+void example_sequence_read_packets(Sequence *seq, bool close_clips_flag);
 
 #endif

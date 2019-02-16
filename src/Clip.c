@@ -43,9 +43,12 @@ int open_clip(Clip *clip) {
             return ret;
         }
         clip->open = true;
-        clip->orig_start_pts = 0;
-        clip->orig_end_pts = get_video_stream(clip->vid_ctx)->duration;
+        if(clip->orig_end_pts == -1) {
+            clip->orig_end_pts = get_video_stream(clip->vid_ctx)->duration;
+        }
         init_internal_vars(clip);
+        seek_clip_pts(clip, 0);
+        printf("OPEN CLIP [%s]\n", clip->url);
     }
     return 0;
 }
@@ -62,6 +65,7 @@ void close_clip(Clip *clip) {
     if(clip->open) {
         free_video_context(clip->vid_ctx);
         clip->open = false;
+        printf("CLOSE CLIP [%s]\n", clip->url);
     }
 }
 
@@ -101,8 +105,8 @@ int set_clip_start(Clip *clip, int64_t pts) {
     }
     int ret = seek_video_pts(clip->vid_ctx, pts);
     if(ret >= 0) {
-        clip->orig_start_pts = ret;
-        clip->current_frame_idx = ret;
+        clip->orig_start_pts = pts;
+        clip->current_frame_idx = 0;
     }
     return ret;
 }
@@ -184,6 +188,26 @@ int64_t get_abs_clip_pts(Clip *clip, int64_t relative_pts) {
  */
 int64_t cov_clip_pts_relative(Clip *clip, int64_t abs_pts) {
     return abs_pts - clip->orig_start_pts;
+}
+
+/**
+ * Convert raw video packet timestamp into clip relative pts
+ * @param  clip    Clip
+ * @param  pkt_pts raw packet pts from original video file
+ * @return         pts relative to clip video
+ */
+int64_t clip_ts_video(Clip *clip, int64_t pkt_ts){
+    return pkt_ts - clip->orig_start_pts;
+}
+
+/**
+ * Convert raw video packet timestamp into clip relative audio pts
+ * @param  clip    Clip
+ * @param  pkt_pts raw packet pts from original video file (in video timebase)
+ * @return         pts relative to clip audio timebase
+ */
+int64_t clip_ts_audio(Clip *clip, int64_t pkt_ts) {
+    return pkt_ts - cov_video_to_audio_pts(clip->vid_ctx, clip->orig_start_pts);
 }
 
 /**
@@ -322,7 +346,24 @@ int64_t compare_clips(Clip *first, Clip *second) {
  * @return      time_base of clip video stream
  */
 AVRational get_clip_video_time_base(Clip *clip) {
+    if(!clip->open) {
+        fprintf(stderr, "Failed to get video time_base: clip[%s] is not open\n", clip->url);
+        return (AVRational){-1, -1};
+    }
     return get_video_time_base(clip->vid_ctx);
+}
+
+/**
+ * Get time_base of clip audio stream
+ * @param  clip Clip
+ * @return      time_base of clip audio stream
+ */
+AVRational get_clip_audio_time_base(Clip *clip) {
+    if(!clip->open) {
+        fprintf(stderr, "Failed to get audio time_base: clip[%s] is not open\n", clip->url);
+        return (AVRational){-1, -1};
+    }
+    return get_audio_time_base(clip->vid_ctx);
 }
 
 /**
@@ -331,6 +372,10 @@ AVRational get_clip_video_time_base(Clip *clip) {
  * @return      video AVStream on success, NULL on failure
  */
 AVStream *get_clip_video_stream(Clip *clip) {
+    if(!clip->open) {
+        fprintf(stderr, "Failed to get video stream: clip[%s] is not open\n", clip->url);
+        return NULL;
+    }
     return get_video_stream(clip->vid_ctx);
 }
 
@@ -340,6 +385,10 @@ AVStream *get_clip_video_stream(Clip *clip) {
  * @return      audio AVStream on success, NULL on failure
  */
 AVStream *get_clip_audio_stream(Clip *clip) {
+    if(!clip->open) {
+        fprintf(stderr, "Failed to get audio stream: clip[%s] is not open\n", clip->url);
+        return NULL;
+    }
     return get_audio_stream(clip->vid_ctx);
 }
 

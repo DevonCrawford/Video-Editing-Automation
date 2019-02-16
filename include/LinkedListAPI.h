@@ -178,6 +178,14 @@ ListIterator createIterator(List list);
 **/
 void* nextElement(ListIterator* iter);
 
+/**
+ * Seek the list iterator to a specific index
+ * @param  iter  ListIterator containing current node (where seek node will be saved)
+ * @param  index position to seek (starting at 0)
+ * @return       >= 0 on success
+ */
+int seekIterator(ListIterator* iter, int index);
+
 /**Returns the number of elements in the list.
  *@pre List must exist, but does not have to have elements.
  *@param list - the list struct.

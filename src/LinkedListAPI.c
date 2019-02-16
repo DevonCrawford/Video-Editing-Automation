@@ -162,13 +162,6 @@ void insertSorted(List *list, void *toBeAdded){
 
 	while (currNode != NULL){
 		if (list->compare(toBeAdded, currNode->data) <= 0){
-
-			char* currDescr = list->printData(currNode->data);
-			char* newDescr = list->printData(toBeAdded);
-
-			free(currDescr);
-			free(newDescr);
-
 			Node* newNode = initializeNode(toBeAdded);
 			newNode->next = currNode;
 			newNode->previous = currNode->previous;
@@ -177,7 +170,6 @@ void insertSorted(List *list, void *toBeAdded){
 			(list->length)++;
 			return;
 		}
-
 		currNode = currNode->next;
 	}
 
@@ -208,7 +200,7 @@ void* deleteDataFromList(List* list, void* toBeDeleted){
 			}
 
 			void* data = delNode->data;
-			// list->deleteData(data);
+			list->deleteData(data);
 			free(delNode);
 			(list->length)--;
 
@@ -270,7 +262,6 @@ char* toString(List list){
 		str = (char*)realloc(str, newLen);
 		strcat(str, "\n");
 		strcat(str, currDescr);
-
 		free(currDescr);
 	}
 
@@ -294,6 +285,26 @@ void* nextElement(ListIterator* iter){
     }else{
         return NULL;
     }
+}
+
+/**
+ * Seek the list iterator to a specific index
+ * @param  iter  ListIterator containing current node (where seek node will be saved)
+ * @param  index position to seek (starting at 0)
+ * @return       >= 0 on success
+ */
+int seekIterator(ListIterator* iter, int index) {
+	Node *tmp = iter->current;
+	int i;
+	for(i = 0; tmp != NULL && i < index; i++) {
+		tmp = tmp->next;
+	}
+	if(tmp != NULL && i == index) {
+		iter->current = tmp;
+		return 0;
+	} else {
+		return -1;
+	}
 }
 
 /**Returns the number of elements in the list.

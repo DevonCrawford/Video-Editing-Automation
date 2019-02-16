@@ -1,11 +1,27 @@
 #include "VideoContext.h"
 
 AVStream *get_video_stream(VideoContext *vid_ctx) {
-    return vid_ctx->fmt_ctx->streams[vid_ctx->video_stream_idx];
+    int index = vid_ctx->video_stream_idx;
+    if(index == -1) {
+        return NULL;
+    }
+    return vid_ctx->fmt_ctx->streams[index];
 }
 
 AVStream *get_audio_stream(VideoContext *vid_ctx) {
-    return vid_ctx->fmt_ctx->streams[vid_ctx->audio_stream_idx];
+    int index = vid_ctx->audio_stream_idx;
+    if(index == -1) {
+        return NULL;
+    }
+    return vid_ctx->fmt_ctx->streams[index];
+}
+
+AVRational get_video_time_base(VideoContext *vid_ctx) {
+    return get_video_stream(vid_ctx)->time_base;
+}
+
+AVRational get_audio_time_base(VideoContext *vid_ctx) {
+    return get_audio_stream(vid_ctx)->time_base;
 }
 
 void init_video_context(VideoContext *vid_ctx) {

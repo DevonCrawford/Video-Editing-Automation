@@ -77,6 +77,10 @@ DBE=$(BIN_EXAMPLES_DIR)
 # EXAMPLES
 # No need to change target, just change first assignment of CUT_OBJS
 # So long as target is the basename of an example file.. it will include all required .o files.
-CUT_DEP_OBJS=VideoContext Timebase Clip
-test-clip: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(CUT_DEP_OBJS))
+TEST_CLIP_OBJS=VideoContext Timebase Clip
+test-clip: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(TEST_CLIP_OBJS))
+	$(CC) $(CFLAGS) -o $(DBE)/$@ $^ $(LDLIBS)
+
+TEST_SEQ_OBJS=Sequence Clip LinkedListAPI VideoContext Timebase
+test-sequence: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(TEST_SEQ_OBJS))
 	$(CC) $(CFLAGS) -o $(DBE)/$@ $^ $(LDLIBS)

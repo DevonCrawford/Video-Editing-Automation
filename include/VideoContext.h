@@ -4,11 +4,29 @@
 #include <stdio.h>
 #include <libavformat/avformat.h>
 
+enum PacketStreamType { DEC_STREAM_NONE = -1, DEC_STREAM_VIDEO, DEC_STREAM_AUDIO };
+
 typedef struct VideoContext {
+    /*
+        Open file information
+     */
     AVFormatContext *fmt_ctx;           // fmt_ctx->streams[stream_index] contains all streams
-    AVCodec *video_dec, *audio_dec;
-    AVCodecContext *video_dec_ctx, *audio_dec_ctx;
+    /*
+        Codecs used for encoding/decoding
+     */
+    AVCodec *video_codec, *audio_codec;
+    /*
+        CodecContexts used for muxing/demuxing
+     */
+    AVCodecContext *video_codec_ctx, *audio_codec_ctx;
+    /*
+        index of stream in fmt_ctx->streams[stream_index]
+     */
     int video_stream_idx, audio_stream_idx;
+    /*
+        internal use only. used in clip_read_frame()
+     */
+    enum PacketStreamType last_decoder_packet_stream;
 } VideoContext;
 
 # define VIDEO_CONTEXT_STREAM_TYPES_LEN 2

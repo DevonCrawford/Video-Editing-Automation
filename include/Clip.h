@@ -36,6 +36,15 @@ typedef struct Clip {
         time_base: same as VideoContext video_stream time_base
     */
     int64_t orig_start_pts, orig_end_pts;
+
+    /*
+        pts of seek, absolute to original video pts
+        time_base is the same as VideoContext video_stream time_base
+        RANGE:
+        >= orig_start_pts and <= orig_end_pts
+     */
+    int64_t seek_pts;
+
     /*
         filename
     */

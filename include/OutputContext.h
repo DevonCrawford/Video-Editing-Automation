@@ -3,23 +3,53 @@
 
 #include <stdio.h>
 #include <libavformat/avformat.h>
+#include <libavutil/timestamp.h>
+#include "Sequence.h"
+
+typedef struct OutputContext {
+    AVFormatContext *fmt_ctx;
+    AVStream *video_stream, *audio_stream;
+} OutputContext;
+
+/**
+ * Initialize OutputContext structure
+ * @param out_ctx OutputContext
+ */
+void init_video_output(OutputContext *out_ctx);
 
 /**
  * Open format and file for video output
- * @param  fmt_ctx  out - AVFormatContext will be allocated automatically by file extension
- * @param  streams  input - incoming packets stream_index field must be set to the index of the
- *                  corresponding stream provided here. You should get this info from demuxing.
- *                  Read av_interleaved_write_frame() docs for more info on why we need this.
- * @param  filename input - name of output file to be created
+ * @param  out_ctx      OutputContext
+ * @param  filename     name of output video file
+ * @param  exampleClip  Clip to pull codec parameters for muxer (output codec)
  * @return          >= 0 on success
  */
- int open_video_output(AVFormatContext *fmt_ctx, AVStream **streams, char *filename);
- 
+int open_video_output(OutputContext *out_ctx, char *filename, Clip *exampleClip);
+
 /**
- * Close video output file
- * @param  fmt_ctx AVFormatContext containing open file information
- * @return         >= 0 on success
+ * Open output file, write sequence packets and close the output file!
+ * (this is an end to end solution)
+ * @param  seq          Sequence containing clips to write to file
+ * @param  filename     name of output video (extension determines container type)
+ * @param  exampleClip  Clip to pull codec parameters for muxer (output codec)
+ * @return          >= 0 on success
  */
-int close_video_output(AVFormatContext *fmt_ctx);
+int write_sequence(Sequence *seq, char *filename, Clip *exampleClip);
+
+ /**
+  * Write all sequence packets to an output file!
+  * @param  fmt_ctx AVFormatContext already assumed to be allocated with open_video_output()
+  * @param  seq     Sequence containing clips
+  * @return         >= 0 on success
+  */
+ int write_sequence_packets(OutputContext *out_ctx, Sequence *seq);
+
+ /**
+  * Close video output file
+  * @param out_ctx
+  * @param trailer_flag when true, trailer will attempt to be written
+  * @return         >= 0 on success
+  */
+ int close_video_output(OutputContext *out_ctx, bool trailer_flag);
 
 #endif

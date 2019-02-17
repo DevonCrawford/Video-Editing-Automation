@@ -26,12 +26,13 @@ AVRational get_audio_time_base(VideoContext *vid_ctx) {
 
 void init_video_context(VideoContext *vid_ctx) {
     vid_ctx->fmt_ctx = NULL;
-    vid_ctx->video_dec = NULL;
-    vid_ctx->audio_dec = NULL;
-    vid_ctx->video_dec_ctx = NULL;
-    vid_ctx->audio_dec_ctx = NULL;
+    vid_ctx->video_codec = NULL;
+    vid_ctx->audio_codec = NULL;
+    vid_ctx->video_codec_ctx = NULL;
+    vid_ctx->audio_codec_ctx = NULL;
     vid_ctx->video_stream_idx = -1;
     vid_ctx->audio_stream_idx = -1;
+    vid_ctx->last_decoder_packet_stream = DEC_STREAM_NONE;
 }
 
 /*
@@ -87,44 +88,44 @@ int open_codec_context(VideoContext *vid_ctx, enum AVMediaType type) {
                 av_get_media_type_string(type));
         return -1;
     }
-    AVCodec *dec;
-    AVCodecContext *dec_ctx;
+    AVCodec *codec;
+    AVCodecContext *codec_ctx;
     AVFormatContext *fmt_ctx = vid_ctx->fmt_ctx;
     AVDictionary *opts = NULL;
     int ret, refcount = 0;
 
-    // finds the stream index given an AVMediaType (and gets decoder *dec on success)
-    int stream_index = av_find_best_stream(fmt_ctx, type, -1, -1, &dec, 0);
+    // finds the stream index given an AVMediaType (and gets codec on success)
+    int stream_index = av_find_best_stream(fmt_ctx, type, -1, -1, &codec, 0);
     if(stream_index < 0) {
         fprintf(stderr, "Could not find %s stream in input file '%s'\n",
                 av_get_media_type_string(type), fmt_ctx->url);
         return 1;
     } else {
-        /* Create decoding context */
-        dec_ctx = avcodec_alloc_context3(dec);
-        if(!dec_ctx) {
+        /* Create codec context */
+        codec_ctx = avcodec_alloc_context3(codec);
+        if(!codec_ctx) {
             fprintf(stderr, "Failed to allocate the %s codec context\n",
                     av_get_media_type_string(type));
             return AVERROR(ENOMEM);
         }
         // Fill the codec context based on the values from the supplied codec parameters.
-        avcodec_parameters_to_context(dec_ctx, fmt_ctx->streams[stream_index]->codecpar);
+        avcodec_parameters_to_context(codec_ctx, fmt_ctx->streams[stream_index]->codecpar);
 
-        /* Init the decoders, with or without reference counting */
+        /* Init the codec context, with or without reference counting */
         av_dict_set(&opts, "refcounted_frames", refcount ? "1" : "0", 0);
-        if ((ret = avcodec_open2(dec_ctx, dec, &opts)) < 0) {
+        if ((ret = avcodec_open2(codec_ctx, codec, &opts)) < 0) {
             fprintf(stderr, "Failed to open %s codec\n",
                     av_get_media_type_string(type));
             return ret;
         } else {
-            // Attach decoder and decoder context to vid_ctx
+            // Attach codec and codec context to vid_ctx
             if(type == AVMEDIA_TYPE_VIDEO) {
-                vid_ctx->video_dec = dec;
-                vid_ctx->video_dec_ctx = dec_ctx;
+                vid_ctx->video_codec = codec;
+                vid_ctx->video_codec_ctx = codec_ctx;
                 vid_ctx->video_stream_idx = stream_index;
             } else if(type == AVMEDIA_TYPE_AUDIO) {
-                vid_ctx->audio_dec = dec;
-                vid_ctx->audio_dec_ctx = dec_ctx;
+                vid_ctx->audio_codec = codec;
+                vid_ctx->audio_codec_ctx = codec_ctx;
                 vid_ctx->audio_stream_idx = stream_index;
             }
             return 0;
@@ -134,7 +135,7 @@ int open_codec_context(VideoContext *vid_ctx, enum AVMediaType type) {
 
 /** free data inside VideoContext **/
 void free_video_context(VideoContext *vid_ctx) {
-    avcodec_free_context(&(vid_ctx->video_dec_ctx));
-    avcodec_free_context(&(vid_ctx->audio_dec_ctx));
+    avcodec_free_context(&(vid_ctx->video_codec_ctx));
+    avcodec_free_context(&(vid_ctx->audio_codec_ctx));
     avformat_close_input(&(vid_ctx->fmt_ctx));
 }

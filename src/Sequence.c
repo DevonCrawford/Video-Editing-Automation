@@ -132,25 +132,25 @@ int64_t seq_frame_within_clip(Sequence *seq, Clip *clip, int frame_index) {
  * @return             >= 0 on success
  */
 int sequence_seek(Sequence *seq, int frame_index) {
-    void *curr;
-    ListIterator it = createIterator(seq->clips);
-    while((curr = nextElement(&it)) != NULL) {
-        Clip *clip = (Clip *) curr;
+    Node *currNode = seq->clips.head;
+    while(currNode != NULL) {
+        Clip *clip = (Clip *) currNode->data;
         open_clip(clip);
         int64_t clip_pts;
         // If clip is found at this frame index (in sequence)
         if((clip_pts = seq_frame_within_clip(seq, clip, frame_index)) >= 0) {
             if(seq->clips_iter.current != NULL) {
                 Clip *previous = (Clip *) seq->clips_iter.current->data;
-                // If clips are different, close current and open next clip
+                // If clips are different, close previous
                 if(compare_clips(clip, previous) != 0) {
                     close_clip(previous);
                 }
             }
-            seq->clips_iter.current = it.current->previous;
+            seq->clips_iter.current = currNode;
             // seek to the correct pts within the clip!
             return seek_clip_pts(clip, clip_pts);
         }
+        currNode = currNode->next;
     }
     // If we got down here, then we did not find a clip at this frame index
     fprintf(stderr, "Failed to find a clip at sequence frame index[%d] :(\n", frame_index);
@@ -204,13 +204,13 @@ int sequence_read_packet(Sequence *seq, AVPacket *pkt, bool close_clips_flag) {
         }
     } else {
         // Convert original packet timestamps into sequence timestamps
-        if(tmpPkt.stream_index == curr_clip->vid_ctx->video_stream_idx) {
-            tmpPkt.pts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
-            tmpPkt.dts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
-        } else if(tmpPkt.stream_index == curr_clip->vid_ctx->audio_stream_idx) {
-            tmpPkt.pts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
-            tmpPkt.dts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
-        }
+        // if(tmpPkt.stream_index == curr_clip->vid_ctx->video_stream_idx) {
+        //     tmpPkt.pts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
+        //     tmpPkt.dts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
+        // } else if(tmpPkt.stream_index == curr_clip->vid_ctx->audio_stream_idx) {
+        //     tmpPkt.pts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
+        //     tmpPkt.dts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
+        // }
         // valid packet down here
         *pkt = tmpPkt;
         return tmpPkt.stream_index;

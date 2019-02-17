@@ -81,6 +81,10 @@ TEST_CLIP_OBJS=VideoContext Timebase Clip
 test-clip: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(TEST_CLIP_OBJS))
 	$(CC) $(CFLAGS) -o $(DBE)/$@ $^ $(LDLIBS)
 
-TEST_SEQ_OBJS=Sequence Clip LinkedListAPI VideoContext Timebase
+TEST_SEQ_OBJS=Sequence Clip LinkedListAPI VideoContext Timebase OutputContext
 test-sequence: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(TEST_SEQ_OBJS))
+	$(CC) $(CFLAGS) -o $(DBE)/$@ $^ $(LDLIBS)
+
+TEST_SEQ_OBJS=VideoContext Timebase Clip ClipDecode
+test-clip-decode: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(TEST_SEQ_OBJS))
 	$(CC) $(CFLAGS) -o $(DBE)/$@ $^ $(LDLIBS)

@@ -1,6 +1,9 @@
 #ifndef _TIMEBASE_API_
 #define _TIMEBASE_API_
 
+/* Set our seek function to only seek to I-frames before our desired frame */
+#define FFMPEG_SEEK_FLAG AVSEEK_FLAG_BACKWARD
+
 #include "VideoContext.h"
 
 /**

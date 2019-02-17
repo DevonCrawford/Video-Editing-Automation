@@ -22,6 +22,7 @@ int init_clip(Clip *clip, char *url) {
     clip->vid_ctx = vid_ctx;
     clip->orig_start_pts = 0;
     clip->orig_end_pts = -1;
+    clip->seek_pts = 0;
     clip->open = false;
     clip->current_frame_idx = 0;
     clip->start_pts = -1;
@@ -107,6 +108,7 @@ int set_clip_start(Clip *clip, int64_t pts) {
     if(ret >= 0) {
         clip->orig_start_pts = pts;
         clip->current_frame_idx = 0;
+        clip->seek_pts = pts;
     }
     return ret;
 }
@@ -150,18 +152,19 @@ int seek_clip(Clip *clip, int64_t seekFrameIndex) {
 */
 int seek_clip_pts(Clip *clip, int64_t pts) {
     // get absolute index (so ffmpeg can seek on video file)
-    pts += clip->orig_start_pts;
-    if(pts > clip->orig_end_pts) {
+    int64_t abs_pts = pts + clip->orig_start_pts;
+    if(pts < 0 || abs_pts > clip->orig_end_pts) {
         int64_t endBound = get_clip_end_frame_idx(clip);
         fprintf(stderr, "seek pts[%ld] outside of clip bounds (0 - %ld)\n", pts, endBound);
         return -1;
     }
     int ret;
-    if((ret = seek_video_pts(clip->vid_ctx, pts)) < 0) {
-        fprintf(stderr, "Failed to seek to pts[%ld] on clip[%s]\n", pts, clip->url);
+    if((ret = seek_video_pts(clip->vid_ctx, abs_pts)) < 0) {
+        fprintf(stderr, "Failed to seek to pts[%ld] on clip[%s]\n", abs_pts, clip->url);
         return ret;
     }
-    if((ret = cov_video_pts(clip->vid_ctx, pts)) < 0) {
+    clip->seek_pts = abs_pts;
+    if((ret = cov_video_pts(clip->vid_ctx, abs_pts)) < 0) {
         fprintf(stderr, "Failed to convert pts to frame index\n");
         return ret;
     }

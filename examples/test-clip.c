@@ -1,3 +1,10 @@
+/**
+ * @file test-clip.c
+ * @author Devon Crawford
+ * @date February 21, 2019
+ * @brief File testing the Clip API
+ */
+
 #include "Timebase.h"
 #include "Clip.h"
 
@@ -15,8 +22,8 @@ int main(int argc, char **argv) {
     printf("video_stream->duration: %ld\n", video_stream->duration);
     printf("video_stream->nb_frames: %ld\n", video_stream->nb_frames);
 
-    printf("video_dec_ctx->width: %d\n", vid_ctx.video_dec_ctx->width);
-    printf("video_dec_ctx->height: %d\n", vid_ctx.video_dec_ctx->height);
+    // printf("video_dec_ctx->width: %d\n", vid_ctx.video_codec_ctx->width);
+    // printf("video_dec_ctx->height: %d\n", vid_ctx.video_codec_ctx->height);
 
     printf("num: %d, den: %d\n", audio_stream->time_base.num, audio_stream->time_base.den);
     printf("start_time: %ld\n", audio_stream->nb_frames);
@@ -41,13 +48,3 @@ int main(int argc, char **argv) {
     free_video_context(&vid_ctx);
     return 0;
 }
-
-
-
-// int cut_range(AVFormatContext *fmt_ctx, int64_t startFrame, int64_t endFrame) {
-//     return cut(filename, startFrame, endFrame-startFrame);
-// }
-//
-// int cut(AVFormatContext *fmt_ctx, int64_t startFrame, int64_t duration) {
-//
-// }

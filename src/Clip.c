@@ -1,3 +1,11 @@
+/**
+ * @file Clip.c
+ * @author Devon Crawford
+ * @date February 21, 2019
+ * @brief File containing the source code for Clip API:
+ * Clip stores a reference to a video file and its data within an editing sequence
+ */
+
 #include "Clip.h"
 
 /**
@@ -90,6 +98,7 @@ int set_clip_bounds(Clip *clip, int64_t start_idx, int64_t end_idx) {
 }
 
 /**
+    Based on fps of original footage..
     Return >= 0 on success
 */
 int set_clip_start_frame(Clip *clip, int64_t frameIndex) {
@@ -393,6 +402,50 @@ AVStream *get_clip_audio_stream(Clip *clip) {
         return NULL;
     }
     return get_audio_stream(clip->vid_ctx);
+}
+
+/**
+ * Get codec parameters of clip video stream
+ * @param  clip Clip to get parameters
+ * @return      not NULL on success
+ */
+AVCodecParameters *get_clip_video_params(Clip *clip) {
+    AVCodecParameters *par = avcodec_parameters_alloc();
+    int ret = avcodec_parameters_copy(par, get_clip_video_stream(clip)->codecpar);
+    if(ret < 0) {
+        avcodec_parameters_free(&par);
+        par = NULL;
+        fprintf(stderr, "Failed to get clip[%s] video params\n", clip->url);
+    } else {
+        if(par->extradata) {
+            free(par->extradata);
+            par->extradata = NULL;
+            par->extradata_size = 0;
+        }
+    }
+    return par;
+}
+
+/**
+ * Get codec parameters of clip audio stream
+ * @param  clip Clip to get parameters
+ * @return      not NULL on success
+ */
+AVCodecParameters *get_clip_audio_params(Clip *clip) {
+    AVCodecParameters *par = avcodec_parameters_alloc();
+    int ret = avcodec_parameters_copy(par, get_clip_audio_stream(clip)->codecpar);
+    if(ret < 0) {
+        avcodec_parameters_free(&par);
+        par = NULL;
+        fprintf(stderr, "Failed to get clip[%s] audio params\n", clip->url);
+    } else{
+        if(par->extradata) {
+            free(par->extradata);
+            par->extradata = NULL;
+            par->extradata_size = 0;
+        }
+    }
+    return par;
 }
 
 /**

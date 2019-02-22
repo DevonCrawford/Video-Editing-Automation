@@ -1,8 +1,19 @@
+/**
+ * @file VideoContext.h
+ * @author Devon Crawford
+ * @date February 21, 2019
+ * @brief File containing the definition and usage for VideoContext API:
+ * The primary data structure for raw media files, videos just as they
+ * are on disk.
+ * Higher level structures such as Clip build ontop of this.
+ */
+
 #ifndef _VIDEOCONTEXT_API_
 #define _VIDEOCONTEXT_API_
 
 #include <stdio.h>
 #include <libavformat/avformat.h>
+#include <libavutil/pixdesc.h>
 
 enum PacketStreamType { DEC_STREAM_NONE = -1, DEC_STREAM_VIDEO, DEC_STREAM_AUDIO };
 
@@ -12,11 +23,13 @@ typedef struct VideoContext {
      */
     AVFormatContext *fmt_ctx;           // fmt_ctx->streams[stream_index] contains all streams
     /*
-        Codecs used for encoding/decoding
+        Codecs used for decoding.
+        Encoding is handled by OutputContext, since the entire sequence
+        needs to be encoded with the same codec and codec parameters
      */
     AVCodec *video_codec, *audio_codec;
     /*
-        CodecContexts used for muxing/demuxing
+        CodecContexts used for demuxing
      */
     AVCodecContext *video_codec_ctx, *audio_codec_ctx;
     /*
@@ -55,5 +68,12 @@ int open_codec_context(VideoContext *vid_ctx, enum AVMediaType type);
 void init_video_context(VideoContext *vid_ctx);
 
 void free_video_context(VideoContext *vid_ctx);
+
+/**
+ * Print most data within an AVCodecContext
+ * @param  c AVCodecContext with data
+ * @return   char * allocated on heap, it is the callers responsibility to free
+ */
+char *print_codec_context(AVCodecContext *c);
 
 #endif

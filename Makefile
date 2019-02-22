@@ -18,6 +18,9 @@ CFLAGS += -Wall -g -I$(INCLUDE_DIR)/
 CFLAGS := $(shell pkg-config --cflags $(FFMPEG_LIBS)) $(CFLAGS)
 LDLIBS := $(shell pkg-config --libs $(FFMPEG_LIBS)) $(LDLIBS)
 
+COMPILE=$(CC) $(CFLAGS) -c $^ -o $@
+LINK_EXE=$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
+
 # Create lists of src and object files for src dir
 SRC_FILES=$(wildcard $(SRC_DIR)/*.c)									# Get .c files in source
 SRC_OBJS=$(patsubst $(SRC_DIR)/%.c,$(BIN_DIR)/%.o, $(SRC_FILES))		# Get name of .o files in source
@@ -25,7 +28,7 @@ SRC_OBJS=$(patsubst $(SRC_DIR)/%.c,$(BIN_DIR)/%.o, $(SRC_FILES))		# Get name of 
 EXAMPLES_FILES=$(wildcard $(EXAMPLES_DIR)/*.c)
 EXAMPLES_OBJS=$(patsubst $(EXAMPLES_DIR)/%.c,$(BIN_EXAMPLES_DIR)/%.o, $(EXAMPLES_FILES))
 EXAMPLES_EXES=$(patsubst %.o,%, $(EXAMPLES_OBJS))
-EXAMPLES_TARGETS=$(patsubst $(EXAMPLES_DIR)/%.c,%, $(EXAMPLES_FILES))
+EXAMPLES_TARGETS=$(patsubst $(EXAMPLES_DIR)/%.c,$(BIN_EXAMPLES_DIR)/%, $(EXAMPLES_FILES))
 
 # Create lists of src, object and exe files for examples dir
 EXAMPLES_FFMPEG_FILES=$(wildcard $(EXAMPLES_FFMPEG_DIR)/*.c)
@@ -37,17 +40,21 @@ $(shell if [ ! -d "${BIN_EXAMPLES_FFMPEG_DIR}" ]; then mkdir -p ${BIN_EXAMPLES_F
 
 # Create src object files
 $(BIN_DIR)/%.o: $(SRC_DIR)/%.c
-	$(CC) $(CFLAGS) -c $^ -o $@
+	$(COMPILE)
 
 # Create examples object files
 $(BIN_EXAMPLES_DIR)/%.o: $(EXAMPLES_DIR)/%.c
-	$(CC) $(CFLAGS) -c $^ -o $@
+	$(COMPILE)
 
 # Create examples-ffmpeg object files
 $(BIN_EXAMPLES_FFMPEG_DIR)/%.o: $(EXAMPLES_FFMPEG_DIR)/%.c
-	$(CC) $(CFLAGS) -c $^ -o $@
+	$(COMPILE)
 
-.phony: all clean-test clean
+# A phony target is one that is not really the name of a file;
+# rather it is just a name for a recipe to be executed when you make an explicit request
+# All targets that generate files should have target name = name of file
+# so that make can correctly track if we need to rebuild the target
+.phony: all src examples clean clean-src clean-examples-ffmpeg clean-examples
 
 all: src examples-ffmpeg examples
 
@@ -72,19 +79,43 @@ clean-src:
 clean:
 	rm -rf $(BIN_DIR)/*
 
-DBE=$(BIN_EXAMPLES_DIR)
+
+# Create executables!
+# For new exe's follow this format:
+# OBJS_BASE are the object files that the executable needs to run
+# Must change target name to $(DBE){name of exe}
+DBE=$(BIN_EXAMPLES_DIR)/
 .SECONDEXPANSION:
-# EXAMPLES
-# No need to change target, just change first assignment of CUT_OBJS
-# So long as target is the basename of an example file.. it will include all required .o files.
-TEST_CLIP_OBJS=VideoContext Timebase Clip
-test-clip: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(TEST_CLIP_OBJS))
-	$(CC) $(CFLAGS) -o $(DBE)/$@ $^ $(LDLIBS)
 
-TEST_SEQ_OBJS=Sequence Clip LinkedListAPI VideoContext Timebase OutputContext
-test-sequence: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(TEST_SEQ_OBJS))
-	$(CC) $(CFLAGS) -o $(DBE)/$@ $^ $(LDLIBS)
+OBJS_BASE=VideoContext Timebase Clip
+$(DBE)test-clip: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
+	$(LINK_EXE)
 
-TEST_SEQ_OBJS=VideoContext Timebase Clip ClipDecode
-test-clip-decode: $(patsubst %, $(DBE)/%.o, $$@) $(patsubst %, $(BIN_DIR)/%.o, $(TEST_SEQ_OBJS))
-	$(CC) $(CFLAGS) -o $(DBE)/$@ $^ $(LDLIBS)
+OBJS_BASE=Sequence Clip LinkedListAPI VideoContext Timebase OutputContext \
+			SequenceEncode SequenceDecode ClipDecode
+$(DBE)test-sequence: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
+	$(LINK_EXE)
+
+OBJS_BASE=VideoContext Timebase Clip ClipDecode
+$(DBE)test-clip-decode: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
+	$(LINK_EXE)
+
+OBJS_BASE=VideoContext Timebase Clip ClipDecode Sequence LinkedListAPI SequenceDecode
+$(DBE)test-sequence-decode: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
+	$(LINK_EXE)
+
+OBJS_BASE=VideoContext Clip ClipDecode ClipEncode OutputContext Timebase \
+ 			Sequence LinkedListAPI SequenceEncode SequenceDecode
+$(DBE)test-clip-encode: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
+	$(LINK_EXE)
+
+OBJS_BASE=	VideoContext Clip ClipDecode OutputContext Timebase \
+			Sequence LinkedListAPI SequenceEncode SequenceDecode
+$(DBE)test-sequence-encode: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
+	$(LINK_EXE)
+
+# $(1) = name of exe
+# $(2) = the list of basename object files that the executable needs to run, without .o
+define EXE_OBJS
+	$(patsubst %, %.o, $(1)) $(patsubst %, $(BIN_DIR)/%.o, $(2))
+endef

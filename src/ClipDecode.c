@@ -1,3 +1,12 @@
+/**
+ * @file ClipDecode.c
+ * @author Devon Crawford
+ * @date February 21, 2019
+ * @brief File containing the source for ClipDecode API:
+ * These functions build ontop of clip_read_packet() to get a packet from the
+ * original video file, decode it and return an AVFrame
+ */
+
 #include "ClipDecode.h"
 
 /**
@@ -77,21 +86,22 @@ bool frame_before_seek(Clip *clip, AVFrame *frame, enum AVMediaType type) {
 int handle_receive_frame(Clip *clip, AVFrame *frame, int ret, enum AVMediaType *type) {
     if(ret == 0) {
         // success, frame was returned from decoder
-        printf("success, frame was returned from decoder [%ld]\n", frame->pts);
         if(frame_before_seek(clip, frame, *type)) {
             int64_t seek_pts = clip->seek_pts;
             if(*type == AVMEDIA_TYPE_AUDIO) {
                 seek_pts = cov_video_to_audio_pts(clip->vid_ctx, seek_pts);
+                printf("skip audio frame[%ld] before seek[%ld]\n", frame->pts, seek_pts);
+            } else {
+                printf("skip video frame[%ld] before seek[%ld]\n", frame->pts, seek_pts);
             }
-            printf("skipping frame[%ld] before seek[%ld]\n", frame->pts, seek_pts);
+
             // skip frame if its before seek
             // (solving the precise seek issue by decoding I-frames and discarding frames before seek time)
             return clip_read_frame(clip, frame, type);
         }
-        return ret;
+        return 0;
     } else if(ret == AVERROR(EAGAIN)) {
         // output is not available in this state - user must try to send new input
-        printf("output is not available in this state - user must try to send new input\n");
         return clip_send_packet_get_frame(clip, frame, type);
     } else {
         // legitimate decoding error
@@ -110,7 +120,6 @@ int clip_send_packet_get_frame(Clip *clip, AVFrame *frame, enum AVMediaType *typ
     int ret = clip_send_packet(clip);
     // if no more packets or error
     if(ret < 0) {
-        printf("no more packets or error\n");
         return ret;
     }
     return clip_read_frame(clip, frame, type);

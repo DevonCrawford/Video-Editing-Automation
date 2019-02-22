@@ -251,6 +251,20 @@ AVStream *get_clip_video_stream(Clip *clip);
 AVStream *get_clip_audio_stream(Clip *clip);
 
 /**
+ * Get codec parameters of clip video stream
+ * @param  clip Clip to get parameters
+ * @return      not NULL on success
+ */
+AVCodecParameters *get_clip_video_params(Clip *clip);
+
+/**
+ * Get codec parameters of clip audio stream
+ * @param  clip Clip to get parameters
+ * @return      not NULL on success
+ */
+AVCodecParameters *get_clip_audio_params(Clip *clip);
+
+/**
     Frees data within clip structure (does not free Clip allocation itself)
 */
 void free_clip(Clip *clip);

@@ -1,3 +1,11 @@
+/**
+ * @file Timebase.h
+ * @author Devon Crawford
+ * @date February 21, 2019
+ * @brief File containing the definition and usage for Timebase API:
+ * Useful timebase conversions and seek functionality for VideoContext
+ */
+
 #ifndef _TIMEBASE_API_
 #define _TIMEBASE_API_
 

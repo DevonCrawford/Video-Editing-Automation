@@ -144,7 +144,13 @@ void* getFromFront(List list);
  **/
 void* getFromBack(List list);
 
-
+/**
+ * Return the Node containing search data
+ * @param  list List
+ * @param  data generic data to be searched using compare function
+ * @return      Node * on success, NULL on fail
+ */
+Node *getNodeFromData(List *list, void *data);
 
 /**Returns a string that contains a string representation of
 the list traversed from  head to tail. Utilize the list's printData function pointer to create the string.

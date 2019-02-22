@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 
 /**
     Clip stores a reference to a video file and its data within an editing sequence.
@@ -34,6 +35,8 @@ typedef struct Clip {
         video pts into the equivalent audio pts!
         IMPORTANT:
         time_base: same as VideoContext video_stream time_base
+        orig_start_pts = INCLUSIVE
+        orig_end_pts   = EXCLUSIVE
     */
     int64_t orig_start_pts, orig_end_pts;
 
@@ -63,7 +66,8 @@ typedef struct Clip {
     /********** EDIT SEQUENCE DATA **********/
     /*
         Position of clip in the edit sequence!! (pts of first/last packet in clip)
-        These positions are INCLUSIVE.
+        start_pts = INCLUSIVE
+        end_pts   = EXCLUSIVE
         First packet.pts is start_pts while last packet.pts is end_pts
         IMPORTANT:
         time_base: same as sequence time_base
@@ -74,7 +78,21 @@ typedef struct Clip {
     /********** INTERNAL ONLY **********/
     // DO NOT USE, YOU WILL BREAK SOME INTERNAL FUNCTIONS (clip_read_packet)
     bool done_reading_video, done_reading_audio;
+
+    /*
+        File stats such as creation time.
+        "sb.st_mtime" is what we want.
+        This will show the last modified date of the file (creation time).
+     */
+    struct stat file_stats;
 } Clip;
+
+/**
+ * Allocate clip on heap and initialize to default values
+ * @param  url filename
+ * @return     NULL on error, not NULL on success
+ */
+Clip *alloc_clip(char *url);
 
 /**
     Initialize Clip object to full length of original video file
@@ -101,6 +119,16 @@ void close_clip(Clip *clip);
     Return >= 0 on success
 */
 int set_clip_bounds(Clip *clip, int64_t start_idx, int64_t end_idx);
+
+/**
+    Initialize Clip object with start and endpoints
+    @param clip: Clip to initialize
+    @param vid_ctx: Video context assumed to already be initialized
+    @param orig_start_pts: start pts in original video file
+    @param orig_end_pts: end pts in original video file
+    Return >= 0 on success
+*/
+int set_clip_bounds_pts(Clip *clip, int64_t orig_start_pts, int64_t orig_end_pts);
 
 /**
     Return >= 0 on success
@@ -223,6 +251,16 @@ void init_internal_vars(Clip *clip);
 int64_t compare_clips(Clip *first, Clip *second);
 
 /**
+ * Compare clips first by date & time and then second by orig_start_pts
+ * @param  f First clip to compare
+ * @param  s Second clip to compare
+ * @return   0 if date, time and orig_start_pts are equal.
+ *           > 0 if first is greater than second
+ *           < 0 if first is less than second
+ */
+int64_t compare_clips_sequential(Clip *f, Clip *s);
+
+/**
  * Get time_base of clip video stream
  * @param  clip Clip
  * @return      time_base of clip video stream
@@ -265,6 +303,18 @@ AVCodecParameters *get_clip_video_params(Clip *clip);
 AVCodecParameters *get_clip_audio_params(Clip *clip);
 
 /**
+ * Cut a clip, splitting it in two.
+ * This function handles clip positions (orig_start_pts and orig_end_pts) of clips but not
+ * sequence positions (start_pts or end_pts) of clips. Sequence positions are handled in cut_clip() in Sequence.c
+ * @param  oc   Original Clip to be cut
+ * @param  pts  pts relative to clip and clip timebase (zero represents orig_start_pts)
+ *              , where the highest value is the orig_end_pts
+ * @param  sc   newly created clip with set bounds (second half of split)
+ * @return
+ */
+int cut_clip_internal(Clip *oc, int64_t pts, Clip **sc);
+
+/**
     Frees data within clip structure (does not free Clip allocation itself)
 */
 void free_clip(Clip *clip);
@@ -292,6 +342,18 @@ void list_delete_clip(void *toBeDeleted);
  *                  0 if first->pts = second->pts.  (first and second at same pts)
  */
 int list_compare_clips(const void *first, const void *second);
+
+/**
+ * Compare two clips within a linked list by date & time first, then orig_start_pts second.
+ * This is useful for ordering clips by time they were shot.
+ * Use insertSorted with this compare function to insert clips into a sequence in sequential order
+ * @param  first  first clip to compare
+ * @param  second second clip to compare
+ * @return        > 0 if first->pts > second->pts.  (first after second)
+ *                < 0 if first->pts < second->pts.  (second after first)
+ *                  0 if first->pts = second->pts.  (first and second at same pts)
+ */
+int list_compare_clips_sequential(const void *first, const void *second);
 
 /**
  * Test example showing how to read packets from clips

@@ -24,11 +24,39 @@ int init_sequence(Sequence *seq, double fps, int sample_rate) {
     }
     seq->clips = initializeList(&list_print_clip, &list_delete_clip, &list_compare_clips);
     seq->clips_iter = createIterator(seq->clips);
-    seq->video_time_base = (AVRational){1, fps * 1000};
+    seq->video_time_base = (AVRational){1, fps * SEQ_VIDEO_FRAME_DURATION};
     seq->audio_time_base = (AVRational){1, sample_rate};
     seq->fps = fps;
-    seq->video_frame_duration = seq->video_time_base.den / fps;
+    seq->video_frame_duration = SEQ_VIDEO_FRAME_DURATION;
     return 0;
+}
+
+/**
+ * Get duration of sequence in frames (defined by fps)
+ * @param  seq Sequence
+ * @return     >= 0 on success
+ */
+int64_t get_sequence_duration(Sequence *seq) {
+    int64_t pts_dur = get_sequence_duration_pts(seq);
+    if(pts_dur < 0) {
+        return pts_dur;
+    }
+    return seq_pts_to_frame_index(seq, pts_dur);
+}
+
+/**
+ * Get duration of sequence in pts (sequence timebase)
+ * @param  seq Sequence
+ * @return     >= 0 on success
+ */
+int64_t get_sequence_duration_pts(Sequence *seq) {
+    if(seq == NULL) {
+        return -1;
+    }
+    if(seq->clips.tail == NULL) {
+        return 0;
+    }
+    return ((Clip *)(seq->clips.tail->data))->end_pts;
 }
 
 /**
@@ -54,7 +82,8 @@ void sequence_add_clip(Sequence *seq, Clip *clip, int start_frame_index) {
  * @param  start_pts
  * @return          >= 0 on success
  */
-void sequence_add_clip_pts(Sequence *seq, Clip *clip, int start_pts) {
+void sequence_add_clip_pts(Sequence *seq, Clip *clip, int64_t start_pts) {
+    printf("sequence add clip [%s], start_pts: %ld\n", clip->url, start_pts);
     if(seq == NULL || clip == NULL) {
         fprintf(stderr, "sequence_add_clip error: parameters cannot be NULL");
         return;
@@ -81,9 +110,47 @@ void sequence_append_clip(Sequence *seq, Clip *clip) {
         sequence_add_clip_pts(seq, clip, 0);
     } else {
         Clip *last = (Clip *) data;
-        int64_t start_pts = last->end_pts + seq->video_frame_duration;
+        int64_t start_pts = last->end_pts;
         sequence_add_clip_pts(seq, clip, start_pts);
     }
+}
+
+/**
+ * Delete a clip from a sequence and move all following clips forward
+ * @param  seq  Sequence
+ * @param  clip Clip to delete
+ * @return      >= 0 on success
+ */
+int sequence_ripple_delete_clip(Sequence *seq, Clip *clip) {
+    if(seq == NULL || clip == NULL) {
+        fprintf(stderr, "sequence_delete_clip() error: parameters cannot be NULL");
+        return -1;
+    }
+    Node *curr = getNodeFromData(&(seq->clips), clip);
+    if(curr == NULL) {
+        fprintf(stderr, "sequence_delete_clip() error: clip data does not exist in sequence\n");
+        return -1;
+    }
+    Node *next = curr->next;
+    void *data = deleteDataFromList(&(seq->clips), clip);
+    if(data == NULL) {
+        fprintf(stderr, "sequence_delete_clip() error: Failed to delete clip from sequence\n");
+        return -1;
+    }
+    if(next == NULL) {
+        list_delete_clip(data);
+        return 0;
+    }
+    Clip *c = (Clip *) (next->data);
+    int64_t shift = c->start_pts - ((Clip *) data)->start_pts;
+    list_delete_clip(data);
+    do {
+        c = (Clip *) (next->data);
+        c->start_pts -= shift;
+        c->end_pts -= shift;
+        next = next->next;
+    } while(next != NULL);
+    return 0;
 }
 
 /**
@@ -93,6 +160,10 @@ void sequence_append_clip(Sequence *seq, Clip *clip) {
  * @return             pts representation of frame in sequence
  */
 int64_t seq_frame_index_to_pts(Sequence *seq, int frame_index) {
+    if(seq == NULL || frame_index < 0) {
+        fprintf(stderr, "seq_frame_index_to_pts() error: Invalid parameters\n");
+        return -1;
+    }
     return seq->video_frame_duration * frame_index;
 }
 
@@ -103,7 +174,65 @@ int64_t seq_frame_index_to_pts(Sequence *seq, int frame_index) {
  * @return     presentation time stamp representation of frame index
  */
 int seq_pts_to_frame_index(Sequence *seq, int64_t pts) {
+    if(seq == NULL || pts < 0) {
+        fprintf(stderr, "seq_pts_to_frame_index() error: Invalid parameters\n");
+        return -1;
+    }
     return pts / seq->video_frame_duration;
+}
+
+/**
+ * Cut a clip within a sequence, splitting the clip in two
+ * @param  seq         Sequence
+ * @param  frame_index index of frame in sequence (clip must lie at this point)
+ * @return             >= 0 on success
+ */
+int cut_clip(Sequence *seq, int frame_index) {
+    if(seq == NULL || frame_index < 0) {
+        return -1;
+    }
+    Clip *clip = NULL, *split_clip = NULL;
+    int64_t clip_pts = find_clip_at_index(seq, frame_index, &clip);
+    if(clip == NULL) {
+        fprintf(stderr, "cut_clip() error: Failed to find clip at index\n");
+        return -1;
+    }
+    int ret = cut_clip_internal(clip, clip_pts, &split_clip);
+    if(ret < 0 || ret == 1) {
+        return ret;
+    }
+    split_clip->end_pts = clip->end_pts;
+    int64_t frame_index_pts = seq_frame_index_to_pts(seq, frame_index);
+    split_clip->start_pts = frame_index_pts;
+    clip->end_pts = frame_index_pts;
+    insertSorted(&(seq->clips), split_clip);
+    return 0;
+}
+
+/**
+ * Iterate all sequence clips to find the clip that contains this frame_index in sequence
+ * @param  seq         Sequence
+ * @param  frame_index index of frame in sequence
+ * @param  found_clip  output clip if found. If not found this will be NULL
+ * @return             >= 0 on success, -1 on fail.
+ *                      The success number will be the pts relative to the clip,
+ *                      and clip timebase (where zero represents clip->orig_start_pts)
+ */
+int64_t find_clip_at_index(Sequence *seq, int frame_index, Clip **found_clip) {
+    Node *currNode = seq->clips.head;
+    while(currNode != NULL) {
+        Clip *clip = (Clip *) currNode->data;
+        open_clip(clip);
+        int64_t clip_pts;
+        // If clip is found at this frame index (in sequence)
+        if((clip_pts = seq_frame_within_clip(seq, clip, frame_index)) >= 0) {
+            *found_clip = clip;
+            return clip_pts;
+        }
+        currNode = currNode->next;
+    }
+    *found_clip = NULL;
+    return -1;
 }
 
 /**
@@ -320,6 +449,29 @@ int64_t audio_pkt_to_seq_ts(Sequence *seq, Clip *clip, int64_t orig_pkt_ts) {
  */
 void free_sequence(Sequence *seq) {
     clearList(&(seq->clips));
+}
+
+/**
+ * get sequence string
+ * @param  seq Sequence to get data
+ * @return     string allocated on heap, to be freed by caller
+ */
+char *print_sequence(Sequence *seq) {
+    char *str = printVars(1, "\n==== Print Sequence ====\n");
+    char buf[4096];
+    sprintf(buf, "duration_pts: %ld\nduration_frames: %ld\n------\n",
+            get_sequence_duration_pts(seq), get_sequence_duration(seq));
+    catVars(&str, 1, buf);
+
+    Node *currNode = seq->clips.head;
+    for(int i = 0; currNode != NULL; i++) {
+        Clip *c = (Clip *) currNode->data;
+        sprintf(buf, "Clip [%d]\nurl: %s\nstart_pts: %ld\nend_pts: %ld\norig_start_pts: %ld\norig_end_pts: %ld\n",
+                i, c->url, c->start_pts, c->end_pts, c->orig_start_pts, c->orig_end_pts);
+        catVars(&str, 1, buf);
+        currNode = currNode->next;
+    }
+    return str;
 }
 
 /*************** EXAMPLE FUNCTIONS ***************/

@@ -9,6 +9,19 @@
 #include "Clip.h"
 
 /**
+ * Allocate clip on heap and initialize to default values
+ * @param  url filename
+ * @return     NULL on error, not NULL on success
+ */
+Clip *alloc_clip(char *url) {
+    Clip *clip = malloc(sizeof(struct Clip));
+    if(clip == NULL || init_clip(clip, url) < 0) {
+        return NULL;
+    }
+    return clip;
+}
+
+/**
     Initialize Clip object to full length of original video file
     Return >= 0 on success
 */
@@ -37,6 +50,9 @@ int init_clip(Clip *clip, char *url) {
     clip->end_pts = -1;
     clip->done_reading_video = false;
     clip->done_reading_audio = false;
+    if(stat(url, &(clip->file_stats)) != 0) {
+        return -1;
+    }
     return 0;
 }
 
@@ -45,6 +61,10 @@ int init_clip(Clip *clip, char *url) {
     Return >= 0 if OK, < 0 on fail
 */
 int open_clip(Clip *clip) {
+    if(clip == NULL) {
+        fprintf(stderr, "open_clip() error: NULL param\n");
+        return -1;
+    }
     if(!clip->open) {
         int ret;
         if((ret = open_video(clip->vid_ctx, clip->url)) < 0) {
@@ -98,6 +118,25 @@ int set_clip_bounds(Clip *clip, int64_t start_idx, int64_t end_idx) {
 }
 
 /**
+    Initialize Clip object with start and endpoints
+    @param clip: Clip to initialize
+    @param vid_ctx: Video context assumed to already be initialized
+    @param orig_start_pts: start pts in original video file
+    @param orig_end_pts: end pts in original video file
+    Return >= 0 on success
+*/
+int set_clip_bounds_pts(Clip *clip, int64_t orig_start_pts, int64_t orig_end_pts) {
+    int ret;
+    if((ret = set_clip_start(clip, orig_start_pts)) < 0) {
+        return ret;
+    }
+    if((ret = set_clip_end(clip, orig_end_pts)) < 0) {
+        return ret;
+    }
+    return 0;
+}
+
+/**
     Based on fps of original footage..
     Return >= 0 on success
 */
@@ -110,7 +149,7 @@ int set_clip_start_frame(Clip *clip, int64_t frameIndex) {
     Return >= 0 on success
 */
 int set_clip_start(Clip *clip, int64_t pts) {
-    if(pts < 0 || pts > clip->orig_end_pts) {
+    if(pts < 0) {
         return -1;
     }
     int ret = seek_video_pts(clip->vid_ctx, pts);
@@ -276,8 +315,9 @@ int clip_read_packet(Clip *clip, AVPacket *pkt) {
     int64_t video_end_pts = clip->orig_end_pts;
     int64_t audio_end_pts = cov_video_to_audio_pts(vid_ctx, video_end_pts);
     if(tmpPkt.stream_index == vid_ctx->video_stream_idx) {
-        // If packet is past the end_frame_pts (outside of clip)
-        if(tmpPkt.pts > video_end_pts) {
+        // If packet is past, or equal to the end_frame_pts (outside of clip)
+        // This performs exclusive end_pts
+        if(tmpPkt.pts >= video_end_pts) {
             clip->done_reading_video = true;
 
             // Recursion to read the rest of audio frames
@@ -294,7 +334,7 @@ int clip_read_packet(Clip *clip, AVPacket *pkt) {
             clip->current_frame_idx = ret;
         }
     } else if(tmpPkt.stream_index == vid_ctx->audio_stream_idx) {
-        if(tmpPkt.pts > audio_end_pts) {
+        if(tmpPkt.pts >= audio_end_pts) {
             clip->done_reading_audio = true;
 
             // Recursion to read the rest of video frames
@@ -349,7 +389,39 @@ void init_internal_vars(Clip *clip) {
  *                  0 if first->pts = second->pts.  (first and second at same pts)
  */
 int64_t compare_clips(Clip *first, Clip *second) {
+    if(first == NULL || second == NULL) {
+        fprintf(stderr, "compare_clips() error: params cannot be NULL\n");
+        return -2;
+    }
     return first->start_pts - second->start_pts;
+}
+
+/**
+ * Compare clips first by date & time and then second by orig_start_pts
+ * @param  f First clip to compare
+ * @param  s Second clip to compare
+ * @return   0 if date, time and orig_start_pts are equal.
+ *           > 0 if first is greater than second
+ *           < 0 if first is less than second
+ */
+int64_t compare_clips_sequential(Clip *f, Clip *s) {
+    if(f == NULL || s == NULL) {
+        fprintf(stderr, "compare_clips_sequential() error: params cannot be NULL\n");
+        return -2;
+    }
+    double diff = difftime(f->file_stats.st_mtime, s->file_stats.st_mtime);
+    printf("difftime: %f\n", diff);
+    if(diff < 0.01 && diff > -0.01) {
+        // if equal date & time
+        // compare start pts
+        return f->orig_start_pts - s->orig_start_pts;
+    } else if(diff > 0) {
+        return 1;
+    } else if(diff < 0) {
+        return -1;
+    }
+    fprintf(stderr, "compare_clips_sequential() error: We should never get down here..\n");
+    return -2;
 }
 
 /**
@@ -449,6 +521,55 @@ AVCodecParameters *get_clip_audio_params(Clip *clip) {
 }
 
 /**
+ * Cut a clip, splitting it in two.
+ * This function handles clip positions (orig_start_pts and orig_end_pts) of clips but not
+ * sequence positions (start_pts or end_pts) of clips. Sequence positions are handled in cut_clip() in Sequence.c
+ * @param  oc   Original Clip to be cut
+ * @param  pts  pts relative to clip and clip timebase (zero represents orig_start_pts)
+ *              , where the highest value is the orig_end_pts
+ * @param  sc   newly created clip with set bounds (second half of split)
+ * @return
+ */
+int cut_clip_internal(Clip *oc, int64_t pts, Clip **sc) {
+    *sc = NULL;
+    if(oc == NULL) {
+        fprintf(stderr, "cut_clip_internal() error: Invalid params\n");
+        return -1;
+    }
+    AVStream *vid_stream = get_clip_video_stream(oc);
+    int64_t frame_duration = vid_stream->duration / vid_stream->nb_frames;
+    if((pts < frame_duration) || (pts >= (oc->orig_end_pts - oc->orig_start_pts))) {
+        printf("cut_clip_internal(): pts out of range/cannot cut less than one frame\n");
+        return 1;
+    }
+    // set orig_end_pts of original clip
+    int64_t sc_orig_end_pts = oc->orig_end_pts;
+    int ret = set_clip_end(oc, oc->orig_start_pts + pts);
+    if(ret < 0) {
+        return ret;
+    }
+
+    *sc = alloc_clip(oc->url);
+    if(*sc == NULL) {
+        fprintf(stderr, "cut_clip_internal() error: failed to allocate new clip\n");
+        return -1;
+    }
+    ret = open_clip(*sc);
+    if(ret < 0) {
+        return ret;
+    }
+    ret = set_clip_bounds_pts(*sc, oc->orig_start_pts + pts, sc_orig_end_pts);
+    if(ret < 0) {
+        free_clip(*sc);
+        free(*sc);
+        *sc = NULL;
+        fprintf(stderr, "cut_clip_internal() error: Failed to set bounds on new clip\n");
+        return ret;
+    }
+    return 0;
+}
+
+/**
     Frees data within clip structure (does not free Clip allocation itself)
 */
 void free_clip(Clip *clip) {
@@ -494,10 +615,12 @@ void list_delete_clip(void *toBeDeleted) {
     Clip *clip = (Clip *) toBeDeleted;
     free_clip(clip);
     free(clip);
+    clip = NULL;
 }
 
 /**
- * Compare two clips within a linked list (uses compare_clips() internally)
+ * Compare two clips within a linked list by start_pts (timestamp in sequence)
+ * (uses compare_clips() internally)
  * @param  first  first clip to compare
  * @param  second second clip to compare
  * @return        > 0 if first->pts > second->pts.  (first after second)
@@ -507,11 +630,38 @@ void list_delete_clip(void *toBeDeleted) {
 int list_compare_clips(const void *first, const void *second) {
     if(first == NULL || second == NULL) {
         fprintf(stderr, "ERROR: compare clips param cannot be NULL\n");
-        return -1;
+        return -2;
     }
     Clip *clip1 = (Clip *) first;
     Clip *clip2 = (Clip *) second;
     int64_t diff = compare_clips(clip1, clip2);
+    if(diff > 0) {
+        return 1;
+    } else if(diff < 0) {
+        return -1;
+    } else {
+        return 0;
+    }
+}
+
+/**
+ * Compare two clips within a linked list by date & time first, then orig_start_pts second.
+ * This is useful for ordering clips by time they were shot.
+ * Use insertSorted with this compare function to insert clips into a sequence in sequential order
+ * @param  first  first clip to compare
+ * @param  second second clip to compare
+ * @return        > 0 if first->pts > second->pts.  (first after second)
+ *                < 0 if first->pts < second->pts.  (second after first)
+ *                  0 if first->pts = second->pts.  (first and second at same pts)
+ */
+int list_compare_clips_sequential(const void *first, const void *second) {
+    if(first == NULL || second == NULL) {
+        fprintf(stderr, "list_compare_clips_sequential() error: params cannot be NULL\n");
+        return -2;
+    }
+    Clip *f = (Clip *) first;
+    Clip *s = (Clip *) second;
+    int64_t diff = compare_clips_sequential(f, s);
     if(diff > 0) {
         return 1;
     } else if(diff < 0) {

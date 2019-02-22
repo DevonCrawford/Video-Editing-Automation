@@ -9,8 +9,11 @@
 #ifndef _SEQUENCE_API_
 #define _SEQUENCE_API_
 
+#define SEQ_VIDEO_FRAME_DURATION 1000
+
 #include "Clip.h"
 #include "LinkedListAPI.h"
+#include "Util.h"
 
 /**
  * Define the Sequence structure.
@@ -62,6 +65,20 @@ typedef struct Sequence {
 int init_sequence(Sequence *seq, double fps, int sample_rate);
 
 /**
+ * Get duration of sequence in frames (defined by fps)
+ * @param  seq Sequence
+ * @return     >= 0 on success
+ */
+int64_t get_sequence_duration(Sequence *seq);
+
+/**
+ * Get duration of sequence in pts (sequence timebase)
+ * @param  seq Sequence
+ * @return     >= 0 on success
+ */
+int64_t get_sequence_duration_pts(Sequence *seq);
+
+/**
  * Insert Clip in sequence in sorted clip->pts order
  * @param  sequence Sequence containing a list of clips
  * @param  clip     Clip to be added into the sequence list of clips
@@ -77,7 +94,7 @@ void sequence_add_clip(Sequence *seq, Clip *clip, int start_frame_index);
  * @param  start_pts
  * @return          >= 0 on success
  */
-void sequence_add_clip_pts(Sequence *seq, Clip *clip, int start_pts);
+void sequence_add_clip_pts(Sequence *seq, Clip *clip, int64_t start_pts);
 
 /**
  * Add clip to the end of sequence
@@ -85,6 +102,14 @@ void sequence_add_clip_pts(Sequence *seq, Clip *clip, int start_pts);
  * @param clip Clip to be inserted into end of sequence
  */
 void sequence_append_clip(Sequence *seq, Clip *clip);
+
+/**
+ * Delete a clip from a sequence and move all following clips forward
+ * @param  seq  Sequence
+ * @param  clip Clip to delete
+ * @return      >= 0 on success
+ */
+int sequence_ripple_delete_clip(Sequence *seq, Clip *clip);
 
 /**
  * Convert sequence frame index to pts (presentation time stamp)
@@ -101,6 +126,25 @@ int64_t seq_frame_index_to_pts(Sequence *seq, int frame_index);
  * @return     presentation time stamp representation of frame index
  */
 int seq_pts_to_frame_index(Sequence *seq, int64_t pts);
+
+/**
+ * Cut a clip within a sequence, splitting the clip in two
+ * @param  seq         Sequence
+ * @param  frame_index index of frame in sequence (clip must lie at this point)
+ * @return             >= 0 on success
+ */
+int cut_clip(Sequence *seq, int frame_index);
+
+/**
+ * Iterate all sequence clips to find the clip that contains this frame_index in sequence
+ * @param  seq         Sequence
+ * @param  frame_index index of frame in sequence
+ * @param  found_clip  output clip if found. If not found this will be NULL
+ * @return             >= 0 on success, -1 on fail.
+ *                      The success number will be the pts relative to the clip,
+ *                      and clip timebase (where zero represents clip->orig_start_pts)
+ */
+int64_t find_clip_at_index(Sequence *seq, int frame_index, Clip **found_clip);
 
 /**
  * Determine if sequence frame lies within a clip (assuming clip is within sequence)
@@ -188,6 +232,13 @@ int64_t audio_pkt_to_seq_ts(Sequence *seq, Clip *clip, int64_t orig_pkt_ts);
  * @param seq Sequence containing clips and clip data to be freed
  */
 void free_sequence(Sequence *seq);
+
+/**
+ * get sequence string
+ * @param  seq Sequence to get data
+ * @return     string allocated on heap, to be freed by caller
+ */
+char *print_sequence(Sequence *seq);
 
 /*************** EXAMPLE FUNCTIONS ***************/
 /**

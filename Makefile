@@ -92,7 +92,7 @@ $(DBE)test-clip: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
 	$(LINK_EXE)
 
 OBJS_BASE=Sequence Clip LinkedListAPI VideoContext Timebase OutputContext \
-			SequenceEncode SequenceDecode ClipDecode
+			SequenceEncode SequenceDecode ClipDecode Util
 $(DBE)test-sequence: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
 	$(LINK_EXE)
 
@@ -100,17 +100,19 @@ OBJS_BASE=VideoContext Timebase Clip ClipDecode
 $(DBE)test-clip-decode: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
 	$(LINK_EXE)
 
-OBJS_BASE=VideoContext Timebase Clip ClipDecode Sequence LinkedListAPI SequenceDecode
+OBJS_BASE=VideoContext Timebase Clip ClipDecode Sequence LinkedListAPI \
+			SequenceDecode Util
 $(DBE)test-sequence-decode: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
 	$(LINK_EXE)
 
 OBJS_BASE=VideoContext Clip ClipDecode ClipEncode OutputContext Timebase \
- 			Sequence LinkedListAPI SequenceEncode SequenceDecode
+ 			Sequence LinkedListAPI SequenceEncode SequenceDecode Util
 $(DBE)test-clip-encode: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
 	$(LINK_EXE)
 
 OBJS_BASE=	VideoContext Clip ClipDecode OutputContext Timebase \
-			Sequence LinkedListAPI SequenceEncode SequenceDecode
+			Sequence LinkedListAPI SequenceEncode SequenceDecode \
+			Util
 $(DBE)test-sequence-encode: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
 	$(LINK_EXE)
 

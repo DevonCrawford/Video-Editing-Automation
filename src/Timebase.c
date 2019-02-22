@@ -58,6 +58,10 @@ int seek_video(VideoContext *vid_ctx, int frameIndex) {
  * @return         >= 0 on success
  */
 int seek_video_pts(VideoContext *vid_ctx, int pts) {
+    if(vid_ctx == NULL || vid_ctx->fmt_ctx == NULL) {
+        fprintf(stderr, "seek_video_pts() error: invalid params\n");
+        return -1;
+    }
     return av_seek_frame(vid_ctx->fmt_ctx, vid_ctx->video_stream_idx, pts, FFMPEG_SEEK_FLAG);
 }
 

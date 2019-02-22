@@ -11,7 +11,7 @@
 
 int main(int argc, char **argv) {
     Sequence seq;
-    init_sequence(&seq, 29.97, 48000);
+    init_sequence(&seq, 30, 48000);
 
     Clip *clip1 = malloc(sizeof(Clip));
     Clip *clip2 = malloc(sizeof(Clip));
@@ -32,14 +32,55 @@ int main(int argc, char **argv) {
     sequence_append_clip(&seq, clip2);
     sequence_append_clip(&seq, clip3);
 
-    printf("\nREAD #1\n");
-    printf("Start timing..\n");
-    clock_t t;
-    t = clock();
-    example_sequence_read_packets(&seq, false);
-    t = clock() - t;
-    double time_taken = ((double)t)/(CLOCKS_PER_SEC/1000);
-    printf("Completed in %fms.\n", time_taken);
+
+
+    char *str = print_sequence(&seq);
+    printf("BEFORE CUT\n%s\n", str);
+    free(str);
+    str = NULL;
+
+    int ret = cut_clip(&seq, 2);
+    printf("cut return: %d\n", ret);
+
+    str = print_sequence(&seq);
+    printf("AFTER CUT\n%s\n", str);
+    free(str);
+    str = NULL;
+
+
+    Clip *split = NULL;
+    find_clip_at_index(&seq, 5, &split);
+    // ret = sequence_ripple_delete_clip(&seq, split);
+
+    int64_t cmp1 = list_compare_clips_sequential(clip1, clip2);
+    int64_t cmp2 = list_compare_clips_sequential(clip1, clip1);
+    int64_t cmp3 = list_compare_clips_sequential(clip2, clip1);
+    int64_t cmp4 = list_compare_clips_sequential(clip3, clip1);
+    int64_t cmp5 = list_compare_clips_sequential(clip1, split);
+    int64_t cmp6 = list_compare_clips_sequential(split, clip1);
+    int64_t cmp7 = list_compare_clips_sequential(split, split);
+    //
+    printf("cmp1: %ld\n", cmp1);
+    printf("cmp2: %ld\n", cmp2);
+    printf("cmp3: %ld\n", cmp3);
+    printf("cmp4: %ld\n", cmp4);
+    printf("cmp5: %ld\n", cmp5);
+    printf("cmp6: %ld\n", cmp6);
+    printf("cmp7: %ld\n", cmp7);
+    //
+    // str = print_sequence(&seq);
+    // printf("AFTER DELETE CLIP\n%s\n", str);
+    // free(str);
+    // str = NULL;
+
+    // printf("\nREAD #1\n");
+    // printf("Start timing..\n");
+    // clock_t t;
+    // t = clock();
+    // example_sequence_read_packets(&seq, false);
+    // t = clock() - t;
+    // double time_taken = ((double)t)/(CLOCKS_PER_SEC/1000);
+    // printf("Completed in %fms.\n", time_taken);
 
     // printf("\nWRITE #1\n");
     // printf("Start timing..\n");

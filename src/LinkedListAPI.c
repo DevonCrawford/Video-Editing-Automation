@@ -200,7 +200,7 @@ void* deleteDataFromList(List* list, void* toBeDeleted){
 			}
 
 			void* data = delNode->data;
-			list->deleteData(data);
+			// list->deleteData(data);
 			free(delNode);
 			(list->length)--;
 
@@ -239,6 +239,24 @@ void* getFromBack(List list){
 
 	return list.tail->data;
 
+}
+
+/**
+ * Return the Node containing search data
+ * @param  list List
+ * @param  data generic data to be searched using compare function
+ * @return      Node * on success, NULL on fail
+ */
+Node *getNodeFromData(List *list, void *data) {
+	Node *curr = list->head;
+
+	while(curr != NULL) {
+		if(list->compare(data, curr->data) == 0) {
+			return curr;
+		}
+		curr = curr->next;
+	}
+	return NULL;
 }
 
 /**Returns a string that contains a string representation of the list traversed from  head to tail.

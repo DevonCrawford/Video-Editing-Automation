@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
     open_clip(clip2);
     open_clip(clip3);
 
-    set_clip_bounds(clip1, 20, 300);
+    set_clip_bounds(clip1, 20, 30);
     set_clip_bounds(clip2, 60, 100);
     set_clip_bounds(clip3, 53, 100);
 

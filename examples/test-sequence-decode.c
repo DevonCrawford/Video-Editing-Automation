@@ -1,13 +1,11 @@
 /**
- * @file test-sequence.c
+ * @file test-sequence-decode.c
  * @author Devon Crawford
  * @date February 21, 2019
- * @brief File testing the Sequence API
+ * @brief File testing the SequenceDecode API
  */
 
-#include "Timebase.h"
-#include "Sequence.h"
-#include "OutputContext.h"
+#include "SequenceDecode.h"
 
 int main(int argc, char **argv) {
     Sequence seq;
@@ -24,7 +22,7 @@ int main(int argc, char **argv) {
     open_clip(clip2);
     open_clip(clip3);
 
-    set_clip_bounds(clip1, 20, 27);
+    set_clip_bounds(clip1, 20, 35);
     set_clip_bounds(clip2, 60, 68);
     set_clip_bounds(clip3, 53, 61);
 
@@ -32,11 +30,13 @@ int main(int argc, char **argv) {
     sequence_append_clip(&seq, clip2);
     sequence_append_clip(&seq, clip3);
 
+    sequence_seek(&seq, 11);
+
     printf("\nREAD #1\n");
     printf("Start timing..\n");
     clock_t t;
     t = clock();
-    example_sequence_read_packets(&seq, false);
+    example_sequence_read_frames(&seq, false);
     t = clock() - t;
     double time_taken = ((double)t)/(CLOCKS_PER_SEC/1000);
     printf("Completed in %fms.\n", time_taken);

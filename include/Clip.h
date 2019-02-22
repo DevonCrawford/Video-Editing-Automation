@@ -36,6 +36,15 @@ typedef struct Clip {
         time_base: same as VideoContext video_stream time_base
     */
     int64_t orig_start_pts, orig_end_pts;
+
+    /*
+        pts of seek, absolute to original video pts
+        time_base is the same as VideoContext video_stream time_base
+        RANGE:
+        >= orig_start_pts and <= orig_end_pts
+     */
+    int64_t seek_pts;
+
     /*
         filename
     */
@@ -240,6 +249,20 @@ AVStream *get_clip_video_stream(Clip *clip);
  * @return      audio AVStream on success, NULL on failure
  */
 AVStream *get_clip_audio_stream(Clip *clip);
+
+/**
+ * Get codec parameters of clip video stream
+ * @param  clip Clip to get parameters
+ * @return      not NULL on success
+ */
+AVCodecParameters *get_clip_video_params(Clip *clip);
+
+/**
+ * Get codec parameters of clip audio stream
+ * @param  clip Clip to get parameters
+ * @return      not NULL on success
+ */
+AVCodecParameters *get_clip_audio_params(Clip *clip);
 
 /**
     Frees data within clip structure (does not free Clip allocation itself)

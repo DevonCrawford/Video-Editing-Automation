@@ -1,3 +1,11 @@
+/**
+ * @file Timebase.c
+ * @author Devon Crawford
+ * @date February 21, 2019
+ * @brief File containing the source for Timebase API:
+ * Useful timebase conversions and seek functionality for VideoContext
+ */
+
 #include "Timebase.h"
 
 /**
@@ -43,10 +51,14 @@ int seek_video(VideoContext *vid_ctx, int frameIndex) {
 }
 
 /**
-    Return >= 0 on success
-*/
+ * Seek to the nearest I-frame before the seek pts
+ * The pts is based on the video stream time_base
+ * @param  vid_ctx Video Context
+ * @param  pts     pts of frame to seek (in video time_base)
+ * @return         >= 0 on success
+ */
 int seek_video_pts(VideoContext *vid_ctx, int pts) {
-    return av_seek_frame(vid_ctx->fmt_ctx, vid_ctx->video_stream_idx, pts, AVSEEK_FLAG_ANY);
+    return av_seek_frame(vid_ctx->fmt_ctx, vid_ctx->video_stream_idx, pts, FFMPEG_SEEK_FLAG);
 }
 
 int64_t get_audio_frame_pts(VideoContext *vid_ctx, int frameIndex) {

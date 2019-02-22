@@ -1,3 +1,11 @@
+/**
+ * @file Clip.c
+ * @author Devon Crawford
+ * @date February 21, 2019
+ * @brief File containing the source code for Clip API:
+ * Clip stores a reference to a video file and its data within an editing sequence
+ */
+
 #include "Clip.h"
 
 /**
@@ -22,6 +30,7 @@ int init_clip(Clip *clip, char *url) {
     clip->vid_ctx = vid_ctx;
     clip->orig_start_pts = 0;
     clip->orig_end_pts = -1;
+    clip->seek_pts = 0;
     clip->open = false;
     clip->current_frame_idx = 0;
     clip->start_pts = -1;
@@ -89,6 +98,7 @@ int set_clip_bounds(Clip *clip, int64_t start_idx, int64_t end_idx) {
 }
 
 /**
+    Based on fps of original footage..
     Return >= 0 on success
 */
 int set_clip_start_frame(Clip *clip, int64_t frameIndex) {
@@ -107,6 +117,7 @@ int set_clip_start(Clip *clip, int64_t pts) {
     if(ret >= 0) {
         clip->orig_start_pts = pts;
         clip->current_frame_idx = 0;
+        clip->seek_pts = pts;
     }
     return ret;
 }
@@ -150,18 +161,19 @@ int seek_clip(Clip *clip, int64_t seekFrameIndex) {
 */
 int seek_clip_pts(Clip *clip, int64_t pts) {
     // get absolute index (so ffmpeg can seek on video file)
-    pts += clip->orig_start_pts;
-    if(pts > clip->orig_end_pts) {
+    int64_t abs_pts = pts + clip->orig_start_pts;
+    if(pts < 0 || abs_pts > clip->orig_end_pts) {
         int64_t endBound = get_clip_end_frame_idx(clip);
         fprintf(stderr, "seek pts[%ld] outside of clip bounds (0 - %ld)\n", pts, endBound);
         return -1;
     }
     int ret;
-    if((ret = seek_video_pts(clip->vid_ctx, pts)) < 0) {
-        fprintf(stderr, "Failed to seek to pts[%ld] on clip[%s]\n", pts, clip->url);
+    if((ret = seek_video_pts(clip->vid_ctx, abs_pts)) < 0) {
+        fprintf(stderr, "Failed to seek to pts[%ld] on clip[%s]\n", abs_pts, clip->url);
         return ret;
     }
-    if((ret = cov_video_pts(clip->vid_ctx, pts)) < 0) {
+    clip->seek_pts = abs_pts;
+    if((ret = cov_video_pts(clip->vid_ctx, abs_pts)) < 0) {
         fprintf(stderr, "Failed to convert pts to frame index\n");
         return ret;
     }
@@ -390,6 +402,50 @@ AVStream *get_clip_audio_stream(Clip *clip) {
         return NULL;
     }
     return get_audio_stream(clip->vid_ctx);
+}
+
+/**
+ * Get codec parameters of clip video stream
+ * @param  clip Clip to get parameters
+ * @return      not NULL on success
+ */
+AVCodecParameters *get_clip_video_params(Clip *clip) {
+    AVCodecParameters *par = avcodec_parameters_alloc();
+    int ret = avcodec_parameters_copy(par, get_clip_video_stream(clip)->codecpar);
+    if(ret < 0) {
+        avcodec_parameters_free(&par);
+        par = NULL;
+        fprintf(stderr, "Failed to get clip[%s] video params\n", clip->url);
+    } else {
+        if(par->extradata) {
+            free(par->extradata);
+            par->extradata = NULL;
+            par->extradata_size = 0;
+        }
+    }
+    return par;
+}
+
+/**
+ * Get codec parameters of clip audio stream
+ * @param  clip Clip to get parameters
+ * @return      not NULL on success
+ */
+AVCodecParameters *get_clip_audio_params(Clip *clip) {
+    AVCodecParameters *par = avcodec_parameters_alloc();
+    int ret = avcodec_parameters_copy(par, get_clip_audio_stream(clip)->codecpar);
+    if(ret < 0) {
+        avcodec_parameters_free(&par);
+        par = NULL;
+        fprintf(stderr, "Failed to get clip[%s] audio params\n", clip->url);
+    } else{
+        if(par->extradata) {
+            free(par->extradata);
+            par->extradata = NULL;
+            par->extradata_size = 0;
+        }
+    }
+    return par;
 }
 
 /**

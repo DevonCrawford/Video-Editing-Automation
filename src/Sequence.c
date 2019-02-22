@@ -1,24 +1,33 @@
+/**
+ * @file Sequence.c
+ * @author Devon Crawford
+ * @date February 14, 2019
+ * @brief File containing the definitions and usage of the Sequence API:
+ * A sequence is a list of clips in the editing timeline
+ */
+
 #include "Sequence.h"
 
 /**
  * Initialize new sequence and list of clips
  * @param  sequence     Sequence is assumed to already be allocated memory
- * @param  video_tb     time_base of the video stream (usually 1000 per frame, 30fps would be 1/30000)
- * @param  audio_tb     time_base of the audio stream (in Hz, ex. 1/48000)
- * @param  fps          frames per second
+ * @param  fps          frames per second for the video stream. Video time base = 1/(fps*1000)
+ *                      this fps is required and will base all functions that ask for
+ *                      frameIndex.. ex: 30fps and frameIndex of 30 would be 1 second in.
+ * @param  sample_rate  sample rate of the audio stream. Audio time base = 1/sample_rate
  * @return              >= 0 on success
  */
-int init_sequence(Sequence *seq, AVRational video_tb, AVRational audio_tb, double fps) {
+int init_sequence(Sequence *seq, double fps, int sample_rate) {
     if(seq == NULL) {
         fprintf(stderr, "sequence is NULL, cannot initialize");
         return -1;
     }
     seq->clips = initializeList(&list_print_clip, &list_delete_clip, &list_compare_clips);
     seq->clips_iter = createIterator(seq->clips);
-    seq->video_time_base = video_tb;
-    seq->audio_time_base = audio_tb;
+    seq->video_time_base = (AVRational){1, fps * 1000};
+    seq->audio_time_base = (AVRational){1, sample_rate};
     seq->fps = fps;
-    seq->video_frame_duration = video_tb.den / fps;
+    seq->video_frame_duration = seq->video_time_base.den / fps;
     return 0;
 }
 
@@ -132,25 +141,25 @@ int64_t seq_frame_within_clip(Sequence *seq, Clip *clip, int frame_index) {
  * @return             >= 0 on success
  */
 int sequence_seek(Sequence *seq, int frame_index) {
-    void *curr;
-    ListIterator it = createIterator(seq->clips);
-    while((curr = nextElement(&it)) != NULL) {
-        Clip *clip = (Clip *) curr;
+    Node *currNode = seq->clips.head;
+    while(currNode != NULL) {
+        Clip *clip = (Clip *) currNode->data;
         open_clip(clip);
         int64_t clip_pts;
         // If clip is found at this frame index (in sequence)
         if((clip_pts = seq_frame_within_clip(seq, clip, frame_index)) >= 0) {
             if(seq->clips_iter.current != NULL) {
                 Clip *previous = (Clip *) seq->clips_iter.current->data;
-                // If clips are different, close current and open next clip
+                // If clips are different, close previous
                 if(compare_clips(clip, previous) != 0) {
                     close_clip(previous);
                 }
             }
-            seq->clips_iter.current = it.current->previous;
+            seq->clips_iter.current = currNode;
             // seek to the correct pts within the clip!
             return seek_clip_pts(clip, clip_pts);
         }
+        currNode = currNode->next;
     }
     // If we got down here, then we did not find a clip at this frame index
     fprintf(stderr, "Failed to find a clip at sequence frame index[%d] :(\n", frame_index);
@@ -204,13 +213,13 @@ int sequence_read_packet(Sequence *seq, AVPacket *pkt, bool close_clips_flag) {
         }
     } else {
         // Convert original packet timestamps into sequence timestamps
-        if(tmpPkt.stream_index == curr_clip->vid_ctx->video_stream_idx) {
-            tmpPkt.pts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
-            tmpPkt.dts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
-        } else if(tmpPkt.stream_index == curr_clip->vid_ctx->audio_stream_idx) {
-            tmpPkt.pts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
-            tmpPkt.dts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
-        }
+        // if(tmpPkt.stream_index == curr_clip->vid_ctx->video_stream_idx) {
+        //     tmpPkt.pts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
+        //     tmpPkt.dts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
+        // } else if(tmpPkt.stream_index == curr_clip->vid_ctx->audio_stream_idx) {
+        //     tmpPkt.pts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
+        //     tmpPkt.dts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
+        // }
         // valid packet down here
         *pkt = tmpPkt;
         return tmpPkt.stream_index;

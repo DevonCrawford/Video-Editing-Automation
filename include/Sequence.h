@@ -3,7 +3,7 @@
  * @author Devon Crawford
  * @date February 14, 2019
  * @brief File containing the definitions and usage of the Sequence API:
- * A sequence is a list of clips in a realtime video editor
+ * A sequence is a list of clips in the editing timeline
  */
 
 #ifndef _SEQUENCE_API_
@@ -55,12 +55,11 @@ typedef struct Sequence {
 /**
  * Initialize new sequence and list of clips
  * @param  sequence     Sequence is assumed to already be allocated memory
- * @param  video_tb     time_base of the video stream
- * @param  audio_tb     time_base of the audio stream
- * @param  fps          frames per second
+ * @param  fps          frames per second for the video stream. Video time base = 1/(fps*1000)
+ * @param  sample_rate  sample rate of the audio stream. Audio time base = 1/sample_rate
  * @return              >= 0 on success
  */
-int init_sequence(Sequence *seq, AVRational video_tb, AVRational audio_tb, double fps);
+int init_sequence(Sequence *seq, double fps, int sample_rate);
 
 /**
  * Insert Clip in sequence in sorted clip->pts order

@@ -111,7 +111,16 @@ as a pointer to the first and last element of the list.
 **/
 void insertSorted(List* list, void* toBeAdded);
 
-
+/** Uses the comparison function pointer to place the element in the
+* appropriate position in the list. Also return the node of inserted element
+* should be used as the only insert function if a sorted list is required.
+*@pre List exists and has memory allocated to it. Node to be added is valid.
+*@post The node to be added will be placed immediately before or after the first occurrence of a related node
+*@param list a pointer to the dummy head of the list containing function pointers for delete and compare, as well
+as a pointer to the first and last element of the list.
+*@param toBeAdded a pointer to data that is to be added to the linked list
+**/
+Node *insertSortedGetNode(List *list, void *toBeAdded);
 
 /** Removes data from from the list, deletes the node and frees the memory,
  * changes pointer values of surrounding nodes to maintain list structure.

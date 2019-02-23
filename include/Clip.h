@@ -88,7 +88,9 @@ typedef struct Clip {
 } Clip;
 
 /**
- * Allocate clip on heap and initialize to default values
+ * Allocate clip on heap, initialize default values and open the clip.
+ * It is important to open the clip when first created so we can set default
+ * values such as clip->orig_end_pts by reading file contents (length of video)
  * @param  url filename
  * @return     NULL on error, not NULL on success
  */

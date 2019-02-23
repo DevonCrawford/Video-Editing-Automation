@@ -9,13 +9,15 @@
 #include "Clip.h"
 
 /**
- * Allocate clip on heap and initialize to default values
+ * Allocate clip on heap, initialize default values and open the clip.
+ * It is important to open the clip when first created so we can set default
+ * values such as clip->orig_end_pts by reading file contents (length of video)
  * @param  url filename
  * @return     NULL on error, not NULL on success
  */
 Clip *alloc_clip(char *url) {
     Clip *clip = malloc(sizeof(struct Clip));
-    if(clip == NULL || init_clip(clip, url) < 0) {
+    if(clip == NULL || init_clip(clip, url) < 0 || open_clip(clip) < 0) {
         return NULL;
     }
     return clip;
@@ -410,7 +412,6 @@ int64_t compare_clips_sequential(Clip *f, Clip *s) {
         return -2;
     }
     double diff = difftime(f->file_stats.st_mtime, s->file_stats.st_mtime);
-    printf("difftime: %f\n", diff);
     if(diff < 0.01 && diff > -0.01) {
         // if equal date & time
         // compare start pts

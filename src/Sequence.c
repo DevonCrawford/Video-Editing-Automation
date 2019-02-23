@@ -18,11 +18,23 @@
  * @return              >= 0 on success
  */
 int init_sequence(Sequence *seq, double fps, int sample_rate) {
-    if(seq == NULL) {
-        fprintf(stderr, "sequence is NULL, cannot initialize");
+    return init_sequence_cmp(seq, fps, sample_rate, &list_compare_clips);
+}
+
+/**
+ * Initialize a new sequence, list of clips along with a custom compare function (for insertSorted)
+ * @param  seq         Sequence to initialize
+ * @param  fps         frames per second
+ * @param  sample_rate sample_rate of the audio stream
+ * @param  compareFunc custom compare function used in sorting and searching
+ * @return             >= 0 on success
+ */
+int init_sequence_cmp(Sequence *seq, double fps, int sample_rate, int (*compareFunc)(const void* first,const void* second)) {
+    if(seq == NULL || compareFunc == NULL) {
+        fprintf(stderr, "init_sequence_cmp() error: params cannot be NULL\n");
         return -1;
     }
-    seq->clips = initializeList(&list_print_clip, &list_delete_clip, &list_compare_clips);
+    seq->clips = initializeList(&list_print_clip, &list_delete_clip, compareFunc);
     seq->clips_iter = createIterator(seq->clips);
     seq->video_time_base = (AVRational){1, fps * SEQ_VIDEO_FRAME_DURATION};
     seq->audio_time_base = (AVRational){1, sample_rate};
@@ -113,6 +125,57 @@ void sequence_append_clip(Sequence *seq, Clip *clip) {
         int64_t start_pts = last->end_pts;
         sequence_add_clip_pts(seq, clip, start_pts);
     }
+}
+
+/**
+ * Insert clip sorted by:
+ * 1. Date & time of file
+ * 2. clip->orig_start_pts
+ * This function will generate the sequence pts for the clip (clip->start_pts and clip->end_pts)
+ * @param  seq  Sequence
+ * @param  clip Clip to insert
+ * @return      >= 0 on success
+ */
+int sequence_insert_clip_sorted(Sequence *seq, Clip *clip) {
+    if(seq == NULL || clip == NULL) {
+        fprintf(stderr, "sequence_insert_clip_sorted() error: parameters cannot be NULL\n");
+        return -1;
+    }
+    Node *node = insertSortedGetNode(&(seq->clips), clip);
+    if(node == NULL) {
+        fprintf(stderr, "sequence_insert_clip_sorted() error: could not insert clip in sorted order\n");
+        return -1;
+    }
+    seq->clips_iter.current = seq->clips.head;
+    if(node->previous == NULL) {
+        move_clip_pts(seq, clip, 0);
+    } else {
+        move_clip_pts(seq, clip, ((Clip *) (node->previous->data))->end_pts);
+    }
+    return shift_clips_after(seq, node);
+}
+
+/**
+ * Shift clips sequence pts to after the current node (insert clip function)
+ * @param  seq          Sequence
+ * @param  curr_node    current clip which should shift all following nodes
+ * @return      >= 0 on success
+ */
+int shift_clips_after(Sequence *seq, Node *curr_node) {
+    if(seq == NULL || curr_node == NULL) {
+        fprintf(stderr, "shift_clips_after() error: parameters cannot be NULL\n");
+        return -1;
+    }
+    Clip *curr = (Clip *) (curr_node->data);
+    int64_t shift = curr->end_pts - curr->start_pts;
+    Node *node = curr_node->next;
+    while(node != NULL) {
+        Clip *next = (Clip *) (node->data);
+        next->start_pts += shift;
+        next->end_pts += shift;
+        node = node->next;
+    }
+    return 0;
 }
 
 /**

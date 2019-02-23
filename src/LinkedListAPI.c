@@ -176,6 +176,52 @@ void insertSorted(List *list, void *toBeAdded){
 	return;
 }
 
+/** Uses the comparison function pointer to place the element in the
+* appropriate position in the list. Also return the node of inserted element
+* should be used as the only insert function if a sorted list is required.
+*@pre List exists and has memory allocated to it. Node to be added is valid.
+*@post The node to be added will be placed immediately before or after the first occurrence of a related node
+*@param list a pointer to the dummy head of the list containing function pointers for delete and compare, as well
+as a pointer to the first and last element of the list.
+*@param toBeAdded a pointer to data that is to be added to the linked list
+**/
+Node *insertSortedGetNode(List *list, void *toBeAdded){
+	if (list == NULL || toBeAdded == NULL){
+		return NULL;
+	}
+
+	if (list->head == NULL){
+		insertBack(list, toBeAdded);
+		return list->head;
+	}
+
+	if (list->compare(toBeAdded, list->head->data) <= 0){
+		insertFront(list, toBeAdded);
+		return list->head;
+	}
+
+	if (list->compare(toBeAdded, list->tail->data) > 0){
+		insertBack(list, toBeAdded);
+		return list->tail;
+	}
+
+	Node* currNode = list->head;
+
+	while (currNode != NULL){
+		if (list->compare(toBeAdded, currNode->data) <= 0){
+			Node* newNode = initializeNode(toBeAdded);
+			newNode->next = currNode;
+			newNode->previous = currNode->previous;
+			currNode->previous->next = newNode;
+			currNode->previous = newNode;
+			(list->length)++;
+			return newNode;
+		}
+		currNode = currNode->next;
+	}
+	return NULL;
+}
+
 void* deleteDataFromList(List* list, void* toBeDeleted){
 	if (list == NULL || toBeDeleted == NULL){
 		return NULL;

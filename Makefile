@@ -116,6 +116,11 @@ OBJS_BASE=	VideoContext Clip ClipDecode OutputContext Timebase \
 $(DBE)test-sequence-encode: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
 	$(LINK_EXE)
 
+OBJS_BASE=Sequence LinkedListAPI Clip Util VideoContext Timebase \
+			OutputContext SequenceEncode SequenceDecode ClipDecode
+$(DBE)random-splice: $$(call EXE_OBJS,$$@,$(OBJS_BASE))
+	$(LINK_EXE)
+
 # $(1) = name of exe
 # $(2) = the list of basename object files that the executable needs to run, without .o
 define EXE_OBJS

@@ -285,7 +285,6 @@ int64_t find_clip_at_index(Sequence *seq, int frame_index, Clip **found_clip) {
     Node *currNode = seq->clips.head;
     while(currNode != NULL) {
         Clip *clip = (Clip *) currNode->data;
-        open_clip(clip);
         int64_t clip_pts;
         // If clip is found at this frame index (in sequence)
         if((clip_pts = seq_frame_within_clip(seq, clip, frame_index)) >= 0) {
@@ -316,7 +315,7 @@ int64_t seq_frame_within_clip(Sequence *seq, Clip *clip, int frame_index) {
     // if sequence frame is within the clip
     if(pts_diff >= 0 && seq_pts <= clip->end_pts) {
         // convert relative pts to clip time_base
-        AVRational clip_tb = get_clip_video_time_base(clip);
+        AVRational clip_tb = clip->video_time_base;
         if(clip_tb.num < 0 || clip_tb.den < 0) {
             return -1;
         }
@@ -336,7 +335,6 @@ int sequence_seek(Sequence *seq, int frame_index) {
     Node *currNode = seq->clips.head;
     while(currNode != NULL) {
         Clip *clip = (Clip *) currNode->data;
-        open_clip(clip);
         int64_t clip_pts;
         // If clip is found at this frame index (in sequence)
         if((clip_pts = seq_frame_within_clip(seq, clip, frame_index)) >= 0) {
@@ -400,6 +398,7 @@ int sequence_read_packet(Sequence *seq, AVPacket *pkt, bool close_clips_flag) {
         } else {
             // move onto next clip
             Clip *next_clip = (Clip *) ((Node *)next)->data;
+            printf("sequence_read_packet() ");
             open_clip(next_clip);
             return sequence_read_packet(seq, pkt, close_clips_flag);
         }

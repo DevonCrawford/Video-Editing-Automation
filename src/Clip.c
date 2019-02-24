@@ -77,6 +77,8 @@ int open_clip(Clip *clip) {
         if(clip->orig_end_pts == -1) {
             clip->orig_end_pts = get_video_stream(clip->vid_ctx)->duration;
         }
+        clip->video_time_base = get_video_time_base(clip->vid_ctx);
+        clip->audio_time_base = get_audio_time_base(clip->vid_ctx);
         init_internal_vars(clip);
         seek_clip_pts(clip, 0);
         printf("OPEN CLIP [%s]\n", clip->url);

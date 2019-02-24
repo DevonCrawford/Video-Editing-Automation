@@ -63,6 +63,12 @@ typedef struct Clip {
      */
     int64_t current_frame_idx;
 
+    /*
+        Timebases fetched when the file is first opened.
+        After the file is open, get timebase from here to avoid opening the file again
+     */
+    AVRational video_time_base, audio_time_base;
+
     /********** EDIT SEQUENCE DATA **********/
     /*
         Position of clip in the edit sequence!! (pts of first/last packet in clip)

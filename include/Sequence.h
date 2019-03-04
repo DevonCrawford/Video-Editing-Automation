@@ -65,6 +65,16 @@ typedef struct Sequence {
 int init_sequence(Sequence *seq, double fps, int sample_rate);
 
 /**
+ * Initialize a new sequence, list of clips along with a custom compare function (for insertSorted)
+ * @param  seq         Sequence to initialize
+ * @param  fps         frames per second
+ * @param  sample_rate sample_rate of the audio stream
+ * @param  compareFunc custom compare function used in sorting and searching
+ * @return             >= 0 on success
+ */
+int init_sequence_cmp(Sequence *seq, double fps, int sample_rate, int (*compareFunc)(const void* first,const void* second));
+
+/**
  * Get duration of sequence in frames (defined by fps)
  * @param  seq Sequence
  * @return     >= 0 on success
@@ -102,6 +112,25 @@ void sequence_add_clip_pts(Sequence *seq, Clip *clip, int64_t start_pts);
  * @param clip Clip to be inserted into end of sequence
  */
 void sequence_append_clip(Sequence *seq, Clip *clip);
+
+/**
+ * Insert clip sorted by:
+ * 1. Date & time of file
+ * 2. clip->orig_start_pts
+ * This function will generate the sequence pts for the clip (clip->start_pts and clip->end_pts)
+ * @param  seq  Sequence
+ * @param  clip Clip to insert
+ * @return      >= 0 on success
+ */
+int sequence_insert_clip_sorted(Sequence *seq, Clip *clip);
+
+/**
+ * Shift clips sequence pts to after the current node (insert clip function)
+ * @param  seq          Sequence
+ * @param  curr_node    current clip which should shift all following nodes
+ * @return      >= 0 on success
+ */
+int shift_clips_after(Sequence *seq, Node *curr_node);
 
 /**
  * Delete a clip from a sequence and move all following clips forward

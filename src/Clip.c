@@ -9,13 +9,15 @@
 #include "Clip.h"
 
 /**
- * Allocate clip on heap and initialize to default values
+ * Allocate clip on heap, initialize default values and open the clip.
+ * It is important to open the clip when first created so we can set default
+ * values such as clip->orig_end_pts by reading file contents (length of video)
  * @param  url filename
  * @return     NULL on error, not NULL on success
  */
 Clip *alloc_clip(char *url) {
     Clip *clip = malloc(sizeof(struct Clip));
-    if(clip == NULL || init_clip(clip, url) < 0) {
+    if(clip == NULL || init_clip(clip, url) < 0 || open_clip(clip) < 0) {
         return NULL;
     }
     return clip;
@@ -45,11 +47,12 @@ int init_clip(Clip *clip, char *url) {
     clip->orig_end_pts = -1;
     clip->seek_pts = 0;
     clip->open = false;
-    clip->current_frame_idx = 0;
     clip->start_pts = -1;
     clip->end_pts = -1;
     clip->done_reading_video = false;
     clip->done_reading_audio = false;
+    clip->fps = 0;
+    clip->curr_pts = 0;
     if(stat(url, &(clip->file_stats)) != 0) {
         return -1;
     }
@@ -68,15 +71,23 @@ int open_clip(Clip *clip) {
     if(!clip->open) {
         int ret;
         if((ret = open_video(clip->vid_ctx, clip->url)) < 0) {
-            fprintf(stderr, "Failed to open VideoContext for clip[%s]\n", clip->url);
+            fprintf(stderr, "open_clip() error: Failed to open VideoContext for clip[%s]\n", clip->url);
             return ret;
         }
         clip->open = true;
+        AVStream *video_stream = get_video_stream(clip->vid_ctx);
         if(clip->orig_end_pts == -1) {
-            clip->orig_end_pts = get_video_stream(clip->vid_ctx)->duration;
+            clip->orig_end_pts = video_stream->duration;
         }
+        clip->video_time_base = get_video_time_base(clip->vid_ctx);
+        clip->audio_time_base = get_audio_time_base(clip->vid_ctx);
+        int64_t frame_duration = video_stream->duration / video_stream->nb_frames;
+        clip->fps = clip->video_time_base.den / (double)frame_duration;
         init_internal_vars(clip);
-        seek_clip_pts(clip, 0);
+        ret = seek_clip_pts(clip, 0);
+        if(ret < 0) {
+            return ret;
+        }
         printf("OPEN CLIP [%s]\n", clip->url);
     }
     return 0;
@@ -155,8 +166,8 @@ int set_clip_start(Clip *clip, int64_t pts) {
     int ret = seek_video_pts(clip->vid_ctx, pts);
     if(ret >= 0) {
         clip->orig_start_pts = pts;
-        clip->current_frame_idx = 0;
         clip->seek_pts = pts;
+        clip->curr_pts = pts;
     }
     return ret;
 }
@@ -203,20 +214,20 @@ int seek_clip_pts(Clip *clip, int64_t pts) {
     int64_t abs_pts = pts + clip->orig_start_pts;
     if(pts < 0 || abs_pts > clip->orig_end_pts) {
         int64_t endBound = get_clip_end_frame_idx(clip);
-        fprintf(stderr, "seek pts[%ld] outside of clip bounds (0 - %ld)\n", pts, endBound);
+        fprintf(stderr, "seek_clip_pts() error: seek pts[%ld] outside of clip bounds (0 - %ld)\n", pts, endBound);
         return -1;
     }
     int ret;
     if((ret = seek_video_pts(clip->vid_ctx, abs_pts)) < 0) {
-        fprintf(stderr, "Failed to seek to pts[%ld] on clip[%s]\n", abs_pts, clip->url);
+        fprintf(stderr, "seek_clip_pts() error: Failed to seek to pts[%ld] on clip[%s]\n", abs_pts, clip->url);
         return ret;
     }
     clip->seek_pts = abs_pts;
     if((ret = cov_video_pts(clip->vid_ctx, abs_pts)) < 0) {
-        fprintf(stderr, "Failed to convert pts to frame index\n");
+        fprintf(stderr, "seek_clip_pts error: Failed to convert pts to frame index\n");
         return ret;
     }
-    clip->current_frame_idx = ret;
+    clip->curr_pts = clip->seek_pts;
     return 0;
 }
 
@@ -327,11 +338,7 @@ int clip_read_packet(Clip *clip, AVPacket *pkt) {
             }
         } else {
             *pkt = tmpPkt;
-            if((ret = cov_video_pts(vid_ctx, tmpPkt.pts)) < 0) {
-                fprintf(stderr, "Failed to convert pts to frame index\n");
-                return ret;
-            }
-            clip->current_frame_idx = ret;
+            clip->curr_pts = pkt->pts;
         }
     } else if(tmpPkt.stream_index == vid_ctx->audio_stream_idx) {
         if(tmpPkt.pts >= audio_end_pts) {
@@ -410,7 +417,6 @@ int64_t compare_clips_sequential(Clip *f, Clip *s) {
         return -2;
     }
     double diff = difftime(f->file_stats.st_mtime, s->file_stats.st_mtime);
-    printf("difftime: %f\n", diff);
     if(diff < 0.01 && diff > -0.01) {
         // if equal date & time
         // compare start pts
@@ -539,8 +545,9 @@ int cut_clip_internal(Clip *oc, int64_t pts, Clip **sc) {
     AVStream *vid_stream = get_clip_video_stream(oc);
     int64_t frame_duration = vid_stream->duration / vid_stream->nb_frames;
     if((pts < frame_duration) || (pts >= (oc->orig_end_pts - oc->orig_start_pts))) {
-        printf("cut_clip_internal(): pts out of range/cannot cut less than one frame\n");
-        return 1;
+        printf("cut_clip_internal(): pts out of range/cannot cut less than one frame.. ");
+        printf("pts: %ld, frame_duration: %ld\n", pts, frame_duration);
+        return -1;
     }
     // set orig_end_pts of original clip
     int64_t sc_orig_end_pts = oc->orig_end_pts;
@@ -548,7 +555,6 @@ int cut_clip_internal(Clip *oc, int64_t pts, Clip **sc) {
     if(ret < 0) {
         return ret;
     }
-
     *sc = alloc_clip(oc->url);
     if(*sc == NULL) {
         fprintf(stderr, "cut_clip_internal() error: failed to allocate new clip\n");
@@ -596,7 +602,7 @@ char *list_print_clip(void *toBePrinted) {
     } else {
         Clip *clip = (Clip *) toBePrinted;
         char buf[1024];
-        sprintf(buf, "ptr: %ld\nstart_frame_pts: %ld\nend_frame_pts: %ld\n",
+        sprintf(buf, "start_pts: %ld\norig_start_pts: %ld\norig_end_pts: %ld\n",
                         clip->start_pts, clip->orig_start_pts, clip->orig_end_pts);
         char *str = malloc(sizeof(char) * (strlen(buf) + 1));
         strcpy(str, buf);

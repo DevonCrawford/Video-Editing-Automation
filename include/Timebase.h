@@ -13,6 +13,7 @@
 #define FFMPEG_SEEK_FLAG AVSEEK_FLAG_BACKWARD
 
 #include "VideoContext.h"
+#include <string.h>
 
 /**
  * Convert video pts into frame index
@@ -37,5 +38,12 @@ int seek_video_pts(VideoContext *vid_ctx, int pts);
 int64_t get_audio_frame_pts(VideoContext *vid_ctx, int frameIndex);
 
 int64_t cov_video_to_audio_pts(VideoContext *vid_ctx, int videoFramePts);
+
+/**
+ * Print an AVRational struct
+ * @param  tb timebase to print
+ * @return    string allocated on heap. to be freed by caller
+ */
+char *print_time_base(AVRational *tb);
 
 #endif

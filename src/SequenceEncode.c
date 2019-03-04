@@ -145,10 +145,6 @@
              return ret;
          }
      }
-
-     // clear_frame_encoding_garbage(oc->buffer_frame);
-     // oc->buffer_frame->key_frame = 1;
-     oc->buffer_frame->pict_type = AV_PICTURE_TYPE_NONE;
      // supply a raw video or audio frame to the encoder
      if(type == AVMEDIA_TYPE_VIDEO) {
          ret = avcodec_send_frame(oc->video.codec_ctx, oc->buffer_frame);

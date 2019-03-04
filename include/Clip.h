@@ -41,12 +41,19 @@ typedef struct Clip {
     int64_t orig_start_pts, orig_end_pts;
 
     /*
-        pts of seek, absolute to original video pts
+        pts of seek, absolute to original video pts.
+
         time_base is the same as VideoContext video_stream time_base
         RANGE:
-        >= orig_start_pts and <= orig_end_pts
+        >= orig_start_pts and < orig_end_pts
      */
     int64_t seek_pts;
+
+    /*
+    By default this is start_frame_pts, but will change when reading packets.
+    (We track this by video packets seen and seek usage)
+     */
+    int64_t curr_pts;
 
     /*
         filename
@@ -56,12 +63,17 @@ typedef struct Clip {
         video context open or closed state
     */
     bool open;
+
     /*
-        Current location of the seek pointer within the original file data.
-        By default this is start_frame_pts, but will change when reading packets.
-        (We track this by video packets seen and seek usage)
+        Timebases fetched when the file is first opened.
+        After the file is open, get timebase from here to avoid opening the file again
      */
-    int64_t current_frame_idx;
+    AVRational video_time_base, audio_time_base;
+
+    /*
+        frames per second of original video
+     */
+    double fps;
 
     /********** EDIT SEQUENCE DATA **********/
     /*
@@ -88,7 +100,9 @@ typedef struct Clip {
 } Clip;
 
 /**
- * Allocate clip on heap and initialize to default values
+ * Allocate clip on heap, initialize default values and open the clip.
+ * It is important to open the clip when first created so we can set default
+ * values such as clip->orig_end_pts by reading file contents (length of video)
  * @param  url filename
  * @return     NULL on error, not NULL on success
  */

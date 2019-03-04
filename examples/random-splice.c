@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
     }
     RandSpliceParams par;
     strcpy(par.output_file, argv[1]);
-    par.fps = atoi(argv[2]);
+    sscanf(argv[2], "%lf", &(par.fps));
     par.sample_rate = atoi(argv[3]);
     strcpy(par.source_dir, argv[4]);
     par.duration = atoi(argv[5]);
@@ -98,6 +98,9 @@ int random_edit(Sequence *os, Sequence *ns, RandSpliceParams *par) {
         fprintf(stderr, "random_edit() error: cut_len_var[%d] must be less than cut_len_avg[%d]\n", par->cut_len_var, par->cut_len_avg);
         return -1;
     }
+    printf("get_sequence_duration: %ld\n", get_sequence_duration(ns));
+    printf("par->duration: %ld\n", par->duration);
+    printf("if %d\n", get_sequence_duration(ns) > par->duration);
     if(get_sequence_duration(ns) > par->duration) {
         return 0;
     }
@@ -122,6 +125,7 @@ int random_cut(Sequence *os, Sequence *ns, RandSpliceParams *par) {
         fprintf(stderr, "random_cut() error: Failed to pick frames\n");
         return ret;
     }
+    printf("pick_frames.. s: %d, e: %d\n", s, e);
     return cut_remove_insert(os, ns, s, e);
 }
 
@@ -202,7 +206,12 @@ int pick_frames(Sequence *seq, RandSpliceParams *par, int *start_index, int *end
         return -1;
     }
     int s = rand_range(0, seq_dur - par->cut_len_avg - 1);
-    int e_var = rand_range((-1)*(par->cut_len_var), par->cut_len_var);
+    int e_var;
+    if(par->cut_len_var == 0) {
+        e_var = 0;
+    } else {
+        e_var = rand_range((-1)*(par->cut_len_var), par->cut_len_var);
+    }
     int e = s + par->cut_len_avg + e_var;
     if(e > seq_dur) {
         e = seq_dur;

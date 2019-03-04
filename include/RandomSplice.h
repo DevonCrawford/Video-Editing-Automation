@@ -21,7 +21,7 @@ typedef struct RandSpliceParams {
     /*
         frames per second to use in sequence
      */
-    int fps;
+    double fps;
     /*
         audio sample rate
      */
@@ -35,7 +35,7 @@ typedef struct RandSpliceParams {
     /*
         duration of output video (in frames)
      */
-    int duration;
+    int64_t duration;
     /*
         average length of cuts (in frames)
      */

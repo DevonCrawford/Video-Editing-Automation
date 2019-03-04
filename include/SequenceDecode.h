@@ -24,6 +24,12 @@
  */
 int sequence_read_frame(Sequence *seq, AVFrame *frame, enum AVMediaType *frame_type, bool close_clips_flag);
 
+/**
+ * Clear fields on AVFrame from decoding
+ * @param f AVFrame to initialize
+ */
+void clear_frame_decoding_garbage(AVFrame *f);
+
 /*************** EXAMPLE FUNCTIONS ***************/
 /**
  * Test example showing how to read frames from sequence

@@ -25,6 +25,7 @@ int sequence_read_frame(Sequence *seq, AVFrame *frame, enum AVMediaType *frame_t
         return -1;
     }
     Clip *curr_clip = (Clip *) currNode->data;    // current clip
+    bool first_frame = (curr_clip->curr_pts == curr_clip->orig_start_pts);
     int ret = clip_read_frame(curr_clip, frame, frame_type);
     // End of clip!
     if(ret < 0) {
@@ -38,7 +39,14 @@ int sequence_read_frame(Sequence *seq, AVFrame *frame, enum AVMediaType *frame_t
         if(next == NULL) {
             // We're done reading all clips! (reset to start)
             printf("We're done reading all clips! (reset to start)\n");
-            sequence_seek(seq, 0);
+            if(seq->clips.head != NULL) {
+                open_clip((Clip *)(seq->clips.head->data));
+            }
+            ret = sequence_seek(seq, 0);
+            if(ret < 0) {
+                fprintf(stderr, "sequence_read_frame() error: Failed to seek to the start of sequence\n");
+                return ret;
+            }
             return -1;
         } else {
             // move onto next clip
@@ -47,8 +55,15 @@ int sequence_read_frame(Sequence *seq, AVFrame *frame, enum AVMediaType *frame_t
             return sequence_read_frame(seq, frame, frame_type, close_clips_flag);
         }
     } else {
+        clear_frame_decoding_garbage(frame);
         // Convert original packet timestamps into sequence timestamps
         if(*frame_type == AVMEDIA_TYPE_VIDEO) {
+            // set first frame to be an I frame
+            if(first_frame) {
+                printf("\nI FRAME!\n\n");
+                frame->key_frame = 1;
+                frame->pict_type = AV_PICTURE_TYPE_I;
+            }
             frame->pts = video_pkt_to_seq_ts(seq, curr_clip, frame->pts);
             // frame->pkt_dts = video_pkt_to_seq_ts(seq, curr_clip, frame->pkt_dts);
         } else if(*frame_type == AVMEDIA_TYPE_AUDIO) {
@@ -57,6 +72,27 @@ int sequence_read_frame(Sequence *seq, AVFrame *frame, enum AVMediaType *frame_t
         }
         return 0;
     }
+}
+
+/**
+ * Clear fields on AVFrame from decoding
+ * @param f AVFrame to initialize
+ */
+void clear_frame_decoding_garbage(AVFrame *f) {
+    f->key_frame = 0;
+    f->pict_type = AV_PICTURE_TYPE_NONE;
+    f->sample_aspect_ratio = (AVRational){0,1};
+    f->coded_picture_number = 0;
+    f->display_picture_number = 0;
+    f->opaque = NULL;
+    f->repeat_pict = 0;
+    f->interlaced_frame = 0;
+    f->side_data = NULL;
+    f->nb_side_data = 0;
+    f->flags = 0;
+    f->decode_error_flags = 0;
+    f->private_ref = NULL;
+    f->opaque_ref = NULL;
 }
 
 /*************** EXAMPLE FUNCTIONS ***************/

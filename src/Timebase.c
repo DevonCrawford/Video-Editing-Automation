@@ -78,6 +78,23 @@ int64_t cov_video_to_audio_pts(VideoContext *vid_ctx, int videoFramePts) {
                                        get_audio_stream(vid_ctx)->time_base);
 }
 
+/**
+ * Print an AVRational struct
+ * @param  tb timebase to print
+ * @return    string allocated on heap. to be freed by caller
+ */
+char *print_time_base(AVRational *tb) {
+    char buf[1024];
+    sprintf(buf, "%d/%d\n", tb->num, tb->den);
+    char *str = malloc(sizeof(char) * (strlen(buf) + 1));
+    if(str == NULL) {
+        fprintf(stderr, "print_time_base(): Failed to allocate memory\n");
+        return NULL;
+    }
+    strcpy(str, buf);
+    return str;
+}
+
 // int seek_audio(VideoContext *vid_ctx, int frame) {
 //     AVStream *audio_stream = get_audio_stream(vid_ctx);
 //

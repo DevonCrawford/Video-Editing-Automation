@@ -313,7 +313,7 @@ int64_t seq_frame_within_clip(Sequence *seq, Clip *clip, int frame_index) {
     int64_t seq_pts = seq_frame_index_to_pts(seq, frame_index);
     int64_t pts_diff = seq_pts - clip->start_pts; // find pts relative to the clip!
     // if sequence frame is within the clip
-    if(pts_diff >= 0 && seq_pts <= clip->end_pts) {
+    if(pts_diff >= 0 && seq_pts < clip->end_pts) {
         // convert relative pts to clip time_base
         AVRational clip_tb = clip->video_time_base;
         if(clip_tb.num < 0 || clip_tb.den < 0) {
@@ -398,7 +398,6 @@ int sequence_read_packet(Sequence *seq, AVPacket *pkt, bool close_clips_flag) {
         } else {
             // move onto next clip
             Clip *next_clip = (Clip *) ((Node *)next)->data;
-            printf("sequence_read_packet() ");
             open_clip(next_clip);
             return sequence_read_packet(seq, pkt, close_clips_flag);
         }

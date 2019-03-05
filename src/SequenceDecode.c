@@ -28,7 +28,6 @@ int sequence_read_frame(Sequence *seq, AVFrame *frame, enum AVMediaType *frame_t
     int ret;
     // If VideoContext was used by another clip, and is now out of bounds of current clip. Reset seek
     if(is_vc_out_bounds(curr_clip)) {
-        printf("vc_out_bounds.. seeking to start of clip\n");
         ret = seek_clip_pts(curr_clip, 0);
         if(ret < 0) {
             return ret;

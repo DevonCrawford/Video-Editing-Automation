@@ -328,7 +328,8 @@ int64_t get_clip_end_frame_idx(Clip* clip) {
  * @return      true if VideoContext is out of clip bounds
  */
 bool is_vc_out_bounds(Clip *clip) {
-    return clip->vid_ctx->seek_pts != clip->orig_start_pts;
+    return clip->vid_ctx->seek_pts < clip->orig_start_pts ||
+            clip->vid_ctx->seek_pts >= clip->orig_end_pts;
 }
 
 /**
@@ -342,18 +343,6 @@ bool is_vc_out_bounds(Clip *clip) {
 bool done_curr_pkt_stream(Clip *clip, AVPacket *pkt) {
     return (clip->done_reading_audio && pkt->stream_index == clip->vid_ctx->audio_stream_idx)
         || (clip->done_reading_video && pkt->stream_index == clip->vid_ctx->video_stream_idx);
-}
-
-/**
- * Detects if VideoContext seek is out of Clip bounds
- * This would occur when another clip uses the same VideoContext, in this case
- * we need to seek to the start of clip which will reset the seek pts
- * @param  clip Clip
- * @return      true if seek if outside of clip bounds
- */
-bool vc_seek_out_of_bounds(Clip *clip) {
-    return !(clip->vid_ctx->seek_pts >= clip->orig_start_pts &&
-            clip->vid_ctx->seek_pts < clip->orig_end_pts);
 }
 
 /**

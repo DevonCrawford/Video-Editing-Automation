@@ -223,15 +223,6 @@ bool is_vc_out_bounds(Clip *clip);
 bool done_curr_pkt_stream(Clip *clip, AVPacket *pkt);
 
 /**
- * Detects if VideoContext seek is out of Clip bounds
- * This would occur when another clip uses the same VideoContext, in this case
- * we need to seek to the start of clip which will reset the seek pts
- * @param  clip Clip
- * @return      true if seek if outside of clip bounds
- */
-bool vc_seek_out_of_bounds(Clip *clip);
-
-/**
     Read a single AVPacket from clip.
     Only returns packets if they are within clip boundaries (start_frame_pts - end_frame_pts)
     This is a wrapper on av_read_frame() from ffmpeg. It will increment the packet

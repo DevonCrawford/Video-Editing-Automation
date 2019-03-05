@@ -16,6 +16,13 @@
 #include <string.h>
 
 /**
+ * Check if AVRational is valid
+ * @param  r AVRational to check
+ * @return   true if invalid
+ */
+bool valid_rational(AVRational r);
+
+/**
  * Convert video pts into frame index
  * @param  vid_ctx VideoContext
  * @param  pts     presentation timestamp of video frames

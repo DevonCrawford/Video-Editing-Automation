@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
     ret = add_files(&orig_seq, files, num_files);
     if(ret < 0) {
         fprintf(stderr, "failed to add files\n");
-        return ret;
+        goto end;
     }
 
     char *str = print_sequence(&orig_seq);
@@ -72,6 +72,7 @@ int main(int argc, char **argv) {
         }
 
         ret = write_sequence(&new_seq, &op);
+        free_output_params(&op);
         if(ret < 0) {
             fprintf(stderr, "Failed to write new sequence to output file[%s]\n", op.filename);
             goto end;
@@ -98,9 +99,6 @@ int random_edit(Sequence *os, Sequence *ns, RandSpliceParams *par) {
         fprintf(stderr, "random_edit() error: cut_len_var[%d] must be less than cut_len_avg[%d]\n", par->cut_len_var, par->cut_len_avg);
         return -1;
     }
-    printf("get_sequence_duration: %ld\n", get_sequence_duration(ns));
-    printf("par->duration: %ld\n", par->duration);
-    printf("if %d\n", get_sequence_duration(ns) > par->duration);
     if(get_sequence_duration(ns) > par->duration) {
         return 0;
     }
@@ -125,7 +123,6 @@ int random_cut(Sequence *os, Sequence *ns, RandSpliceParams *par) {
         fprintf(stderr, "random_cut() error: Failed to pick frames\n");
         return ret;
     }
-    printf("pick_frames.. s: %d, e: %d\n", s, e);
     return cut_remove_insert(os, ns, s, e);
 }
 
@@ -155,32 +152,26 @@ int cut_remove_insert(Sequence *os, Sequence *ns, int start_index, int end_index
         fprintf(stderr, "cut_remove_insert() error: Failed to find clip at cut center index[%d]\n", cut_center_index);
         return -1;
     }
-    Clip *cut_copy = alloc_clip(cut->url);
+    Clip *cut_copy = copy_clip_vc(cut);
     if(cut_copy == NULL) {
         fprintf(stderr, "cut_remove_insert() error: Failed to allocate cut_copy\n");
         return -1;
     }
     ret = set_clip_bounds_pts(cut_copy, cut->orig_start_pts, cut->orig_end_pts);
     if(ret < 0) {
-        free_clip(cut_copy);
-        free(cut_copy);
-        cut_copy = NULL;
+        free_clip(&cut_copy);
         fprintf(stderr, "cut_remove_insert() error: Failed to set clip bounds on cut copy\n");
         return ret;
     }
     ret = sequence_insert_clip_sorted(ns, cut_copy);
     if(ret < 0) {
-        free_clip(cut_copy);
-        free(cut_copy);
-        cut_copy = NULL;
-        fprintf(stderr, "cut_remove_insert() error: failed to add clip[%s] to new sequence\n", cut_copy->url);
+        free_clip(&cut_copy);
+        fprintf(stderr, "cut_remove_insert() error: failed to add clip[%s] to new sequence\n", cut_copy->vid_ctx->url);
         return ret;
     }
     ret = sequence_ripple_delete_clip(os, cut);
     if(ret < 0) {
-        free_clip(cut_copy);
-        free(cut_copy);
-        cut_copy = NULL;
+        free_clip(&cut_copy);
         fprintf(stderr, "cut_remove_insert() error: Failed to delete clip from original sequence\n");
         return ret;
     }
@@ -264,7 +255,7 @@ int add_files(Sequence *seq, char **files, int num_files) {
             fprintf(stderr, "add_files() error: failed to add clip[%s] to sequence\n", files[i]);
             return ret;
         }
-        printf("added clip[%s] to original sequence\n", files[i]);
+        printf("added clip[%s] to original sequence\n", curr->vid_ctx->url);
     }
     return 0;
 }

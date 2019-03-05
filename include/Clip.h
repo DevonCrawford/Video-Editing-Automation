@@ -13,7 +13,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <sys/stat.h>
 
 /**
     Clip stores a reference to a video file and its data within an editing sequence.
@@ -40,41 +39,6 @@ typedef struct Clip {
     */
     int64_t orig_start_pts, orig_end_pts;
 
-    /*
-        pts of seek, absolute to original video pts.
-
-        time_base is the same as VideoContext video_stream time_base
-        RANGE:
-        >= orig_start_pts and < orig_end_pts
-     */
-    int64_t seek_pts;
-
-    /*
-    By default this is start_frame_pts, but will change when reading packets.
-    (We track this by video packets seen and seek usage)
-     */
-    int64_t curr_pts;
-
-    /*
-        filename
-    */
-    char *url;
-    /*
-        video context open or closed state
-    */
-    bool open;
-
-    /*
-        Timebases fetched when the file is first opened.
-        After the file is open, get timebase from here to avoid opening the file again
-     */
-    AVRational video_time_base, audio_time_base;
-
-    /*
-        frames per second of original video
-     */
-    double fps;
-
     /********** EDIT SEQUENCE DATA **********/
     /*
         Position of clip in the edit sequence!! (pts of first/last packet in clip)
@@ -92,12 +56,23 @@ typedef struct Clip {
     bool done_reading_video, done_reading_audio;
 
     /*
-        File stats such as creation time.
-        "sb.st_mtime" is what we want.
-        This will show the last modified date of the file (creation time).
+        counted by clip_read_frame()
      */
-    struct stat file_stats;
+    int64_t frame_index;
 } Clip;
+
+/**
+ * Allocate a new clip pointing to the same VideoContext as Clip param
+ * @param  src new clip will point to same VideoContext as this clip
+ * @return     >= 0 on success
+ */
+Clip *copy_clip_vc(Clip *src);
+
+/**
+ * Allocate a new Clip without a VideoContext
+ * @return NULL on fail, not NULL on success
+ */
+Clip *alloc_clip_internal();
 
 /**
  * Allocate clip on heap, initialize default values and open the clip.
@@ -109,15 +84,25 @@ typedef struct Clip {
 Clip *alloc_clip(char *url);
 
 /**
-    Initialize Clip object to full length of original video file
-    Return >= 0 on success
-*/
+ * Initialize clip without video context
+ * @param  clip Clip to initialize
+ * @return      >= 0 on success
+ */
+int init_clip_internal(Clip *clip);
+
+/**
+ * Initialize Clip with new VideoContext
+ * @param  clip Clip to be initialized
+ * @param  url  filename
+ * @return      >= 0 on success
+ */
 int init_clip(Clip *clip, char *url);
 
-/*
-    Open a clip (VideoContext) to read data from the original file
-    Return >= 0 if OK, < 0 on fail
-*/
+/**
+ * Open a clip (VideoContext) to read data from the original file
+ * @param  clip Clip with videoContext to be opened
+ * @return      >= 0 on success
+ */
 int open_clip(Clip *clip);
 
 int open_clip_bounds(Clip *clip, int64_t start_idx, int64_t end_idx);
@@ -219,6 +204,15 @@ int64_t clip_ts_audio(Clip *clip, int64_t pkt_ts);
 int64_t get_clip_end_frame_idx(Clip* clip);
 
 /**
+ * Determine if VideoContext is out of clip bounds.
+ * If this is the case, then VideoContext was used by another clip and needs
+ * to be reset on the current clip with seek_clip_pts(clip, 0);
+ * @param  clip Clip
+ * @return      true if VideoContext is out of clip bounds
+ */
+bool is_vc_out_bounds(Clip *clip);
+
+/**
  * Detects if we are done reading the current packet stream..
  * if true.. then the packet in parameter should be skipped over!
  * @param  clip clip
@@ -227,6 +221,15 @@ int64_t get_clip_end_frame_idx(Clip* clip);
  *              false, otherwise
  */
 bool done_curr_pkt_stream(Clip *clip, AVPacket *pkt);
+
+/**
+ * Detects if VideoContext seek is out of Clip bounds
+ * This would occur when another clip uses the same VideoContext, in this case
+ * we need to seek to the start of clip which will reset the seek pts
+ * @param  clip Clip
+ * @return      true if seek if outside of clip bounds
+ */
+bool vc_seek_out_of_bounds(Clip *clip);
 
 /**
     Read a single AVPacket from clip.
@@ -329,9 +332,9 @@ AVCodecParameters *get_clip_audio_params(Clip *clip);
 int cut_clip_internal(Clip *oc, int64_t pts, Clip **sc);
 
 /**
-    Frees data within clip structure (does not free Clip allocation itself)
+    Frees data within clip structure and the Clip allocation itself
 */
-void free_clip(Clip *clip);
+void free_clip(Clip **clip);
 
 /*************** LINKED LIST FUNCTIONS ***************/
 /**

@@ -25,11 +25,19 @@ int sequence_read_frame(Sequence *seq, AVFrame *frame, enum AVMediaType *frame_t
         return -1;
     }
     Clip *curr_clip = (Clip *) currNode->data;    // current clip
-    bool first_frame = (curr_clip->curr_pts == curr_clip->orig_start_pts);
-    int ret = clip_read_frame(curr_clip, frame, frame_type);
+    int ret;
+    // If VideoContext was used by another clip, and is now out of bounds of current clip. Reset seek
+    if(is_vc_out_bounds(curr_clip)) {
+        printf("vc_out_bounds.. seeking to start of clip\n");
+        ret = seek_clip_pts(curr_clip, 0);
+        if(ret < 0) {
+            return ret;
+        }
+    }
+    ret = clip_read_frame(curr_clip, frame, frame_type);
     // End of clip!
     if(ret < 0) {
-        printf("End of clip[%s]\n", curr_clip->url);
+        printf("End of clip[%s]\n", curr_clip->vid_ctx->url);
         if(close_clips_flag) {
             close_clip(curr_clip);
         }
@@ -59,8 +67,7 @@ int sequence_read_frame(Sequence *seq, AVFrame *frame, enum AVMediaType *frame_t
         // Convert original packet timestamps into sequence timestamps
         if(*frame_type == AVMEDIA_TYPE_VIDEO) {
             // set first frame to be an I frame
-            if(first_frame) {
-                printf("\nI FRAME!\n\n");
+            if(curr_clip->frame_index == 1) {
                 frame->key_frame = 1;
                 frame->pict_type = AV_PICTURE_TYPE_I;
             }
@@ -112,7 +119,7 @@ void clear_frame_decoding_garbage(AVFrame *f) {
          if(clip == NULL) {
              printf("clip == NULL, printing raw frame pts: %ld\n", frame->pts);
          } else {
-             printf("clip: %s | ", clip->url);
+             printf("clip: %s | ", clip->vid_ctx->url);
              if(type == AVMEDIA_TYPE_VIDEO) {
                  printf("Video frame! pts: %ld, frame: %ld\n", frame->pts,
                          cov_video_pts(clip->vid_ctx, frame->pts));

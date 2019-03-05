@@ -13,7 +13,7 @@ int cut(AVFormatContext *fmt_ctx, int64_t startFrame, int64_t duration);
 
 int main(int argc, char **argv) {
     VideoContext vid_ctx;
-    open_video(&vid_ctx, argv[1]);
+    open_video_context(&vid_ctx, argv[1]);
     /* dump input information to stderr */
     av_dump_format(vid_ctx.fmt_ctx, 0, argv[1], 0);
 
@@ -45,6 +45,6 @@ int main(int argc, char **argv) {
     // free_clip(&clip);
 
     // free video context
-    free_video_context(&vid_ctx);
+    close_video_context(&vid_ctx);
     return 0;
 }

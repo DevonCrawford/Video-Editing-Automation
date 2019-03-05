@@ -28,22 +28,25 @@ int clip_read_frame(Clip *clip, AVFrame *frame, enum AVMediaType *frame_type) {
             ret = avcodec_receive_frame(vid_ctx->video_codec_ctx, frame);
             if(ret == 0) {
                 // success, frame was returned from decoder
-                if(frame->pts < clip->seek_pts) {
-                    printf("skip video frame[%ld] before seek[%ld]\n", frame->pts, clip->seek_pts);
+                if(frame->pts < clip->vid_ctx->seek_pts) {
+                    printf("skip video frame[%ld] before seek[%ld]\n", frame->pts, clip->vid_ctx->seek_pts);
                     handle_ret = 1;
                 } else {
+                    ++(clip->frame_index);
                     handle_ret = 0;
                 }
             } else if(ret == AVERROR(EAGAIN)) {
                 // output is not available in this state - user must try to send new input
                 ret = clip_send_packet(clip);   // if no more packets or error
                 if(ret < 0) {
+                    clip->frame_index = 0;
                     return ret;
                 }
                 handle_ret = 1;
             } else {
                 // legitimate decoding error
                 fprintf(stderr, "Error decoding frame (%s)\n", av_err2str(ret));
+                clip->frame_index = 0;
                 return -1;
             }
         } else if(vid_ctx->last_decoder_packet_stream == DEC_STREAM_AUDIO) {
@@ -51,7 +54,7 @@ int clip_read_frame(Clip *clip, AVFrame *frame, enum AVMediaType *frame_type) {
             ret = avcodec_receive_frame(vid_ctx->audio_codec_ctx, frame);
             if(ret == 0) {
                 // success, frame was returned from decoder
-                int64_t seek_pts = cov_video_to_audio_pts(clip->vid_ctx, clip->seek_pts);
+                int64_t seek_pts = cov_video_to_audio_pts(clip->vid_ctx, clip->vid_ctx->seek_pts);
                 if(frame->pts < seek_pts) {
                     printf("skip audio frame[%ld] before seek[%ld]\n", frame->pts, seek_pts);
                     handle_ret = 1;
@@ -62,18 +65,21 @@ int clip_read_frame(Clip *clip, AVFrame *frame, enum AVMediaType *frame_type) {
                 // output is not available in this state - user must try to send new input
                 ret = clip_send_packet(clip);   // if no more packets or error
                 if(ret < 0) {
+                    clip->frame_index = 0;
                     return ret;
                 }
                 handle_ret = 1;
             } else {
                 // legitimate decoding error
                 fprintf(stderr, "Error decoding frame (%s)\n", av_err2str(ret));
+                clip->frame_index = 0;
                 return -1;
             }
         } else {
             ret = clip_send_packet(clip);
             // if no more packets or error
             if(ret < 0) {
+                clip->frame_index = 0;
                 return ret;
             }
             handle_ret = 1;
@@ -95,7 +101,7 @@ int example_clip_read_frames(Clip *clip) {
         return AVERROR(ENOMEM);
     }
     while(clip_read_frame(clip, frame, &type) >= 0) {
-        printf("clip: %s | ", clip->url);
+        printf("clip: %s | ", clip->vid_ctx->url);
         if(type == AVMEDIA_TYPE_VIDEO) {
             printf("Video frame! pts: %ld, frame: %ld\n", frame->pts,
                     cov_video_pts(clip->vid_ctx, frame->pts));
@@ -117,50 +123,12 @@ int example_clip_read_frames(Clip *clip) {
  * @return       true if frame is before seek position, false otherwise
  */
 bool frame_before_seek(Clip *clip, AVFrame *frame, enum AVMediaType type) {
-    int64_t seek_pts = clip->seek_pts;
+    int64_t seek_pts = clip->vid_ctx->seek_pts;
     if(type == AVMEDIA_TYPE_AUDIO) {
         seek_pts = cov_video_to_audio_pts(clip->vid_ctx, seek_pts);
     }
     return frame->pts < seek_pts;
 }
-
-/**
- * Handle receive frame return, deciding to send another packet
- * @param  clip  Clip to read packets
- * @param  ret   return value from calling avcodec_receive_frame()
- * @return       >= 0 on success
- */
-// int handle_receive_frame(Clip *clip, AVFrame *frame, int ret, enum AVMediaType *type) {
-//     if(ret == 0) {
-//         // success, frame was returned from decoder
-//         if(frame_before_seek(clip, frame, *type)) {
-//             int64_t seek_pts = clip->seek_pts;
-//             if(*type == AVMEDIA_TYPE_AUDIO) {
-//                 seek_pts = cov_video_to_audio_pts(clip->vid_ctx, seek_pts);
-//                 printf("skip audio frame[%ld] before seek[%ld]\n", frame->pts, seek_pts);
-//             } else {
-//                 printf("skip video frame[%ld] before seek[%ld]\n", frame->pts, seek_pts);
-//             }
-//
-//             // skip frame if its before seek
-//             // (solving the precise seek issue by decoding I-frames and discarding frames before seek time)
-//             return 1;
-//         }
-//         return 0;
-//     } else if(ret == AVERROR(EAGAIN)) {
-//         // output is not available in this state - user must try to send new input
-//         ret = clip_send_packet(clip);
-//         // if no more packets or error
-//         if(ret < 0) {
-//             return ret;
-//         }
-//         return 1;
-//     } else {
-//         // legitimate decoding error
-//         fprintf(stderr, "Error decoding frame (%s)\n", av_err2str(ret));
-//         return -1;
-//     }
-// }
 
 /**
  * Send clip packet to decoder

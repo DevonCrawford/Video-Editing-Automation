@@ -37,9 +37,6 @@ int main(int argc, char **argv) {
     time_taken = ((double)t)/(CLOCKS_PER_SEC/1000);
     printf("Completed in %fms.\n", time_taken);
 
-    free_clip(clip1);
-    free(clip1);
-    clip1 = NULL;
-
+    free_clip(&clip1);
     return 0;
 }

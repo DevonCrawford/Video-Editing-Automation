@@ -371,8 +371,10 @@ void set_audio_out_params(AudioOutParams *op, AVCodecContext *c) {
  * @param op OutputParameters to be freed
  */
 void free_output_params(OutputParameters *op) {
-    free(op->filename);
-    op->filename = NULL;
+    if(op->filename != NULL) {
+        free(op->filename);
+        op->filename = NULL;
+    }
 }
 
 /**

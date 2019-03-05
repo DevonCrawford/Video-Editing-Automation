@@ -75,6 +75,23 @@ int init_sequence(Sequence *seq, double fps, int sample_rate);
 int init_sequence_cmp(Sequence *seq, double fps, int sample_rate, int (*compareFunc)(const void* first,const void* second));
 
 /**
+ * Allocate a clip within a sequence and use a reference to the same videoContext
+ * for clips with the same url (filename)
+ * @param  seq Sequence where clip will be added (used to find videoContext)
+ * @param  url filename of clip to create
+ * @return     >= 0 on success
+ */
+Clip *seq_alloc_clip(Sequence *seq, char *url);
+
+/**
+ * Find clip with the search url in a sequence
+ * @param  seq Sequence containing clips to be searched
+ * @param  url search key
+ * @return     NULL on fail, not NULL on success
+ */
+Clip *find_clip(Sequence *seq, char *url);
+
+/**
  * Get duration of sequence in frames (defined by fps)
  * @param  seq Sequence
  * @return     >= 0 on success

@@ -34,15 +34,23 @@ AVRational get_audio_time_base(VideoContext *vid_ctx) {
     return get_audio_stream(vid_ctx)->time_base;
 }
 
-void init_video_context(VideoContext *vid_ctx) {
-    vid_ctx->fmt_ctx = NULL;
-    vid_ctx->video_codec = NULL;
-    vid_ctx->audio_codec = NULL;
-    vid_ctx->video_codec_ctx = NULL;
-    vid_ctx->audio_codec_ctx = NULL;
-    vid_ctx->video_stream_idx = -1;
-    vid_ctx->audio_stream_idx = -1;
-    vid_ctx->last_decoder_packet_stream = DEC_STREAM_NONE;
+void init_video_context(VideoContext *vc) {
+    vc->fmt_ctx = NULL;
+    vc->video_codec = NULL;
+    vc->audio_codec = NULL;
+    vc->video_codec_ctx = NULL;
+    vc->audio_codec_ctx = NULL;
+    vc->video_stream_idx = -1;
+    vc->audio_stream_idx = -1;
+    vc->last_decoder_packet_stream = DEC_STREAM_NONE;
+    vc->open = false;
+    vc->url = NULL;
+    vc->video_time_base = (AVRational){0,0};
+    vc->audio_time_base = (AVRational){0,0};
+    vc->fps = 0;
+    vc->seek_pts = 0;
+    vc->curr_pts = 0;
+    vc->clip_count = 0;
 }
 
 /*
@@ -50,7 +58,7 @@ void init_video_context(VideoContext *vid_ctx) {
     in @param filename - name of video file
     Return >= 0 if OK, < 0 on fail
 */
-int open_video(VideoContext *vid_ctx, char *filename) {
+int open_video_context(VideoContext *vid_ctx, char *filename) {
     int ret;
     if((ret = open_format_context(vid_ctx, filename)) < 0) {
         return ret;
@@ -68,17 +76,51 @@ int open_video(VideoContext *vid_ctx, char *filename) {
             return -1;
         }
     }
+    if(stat(filename, &(vid_ctx->file_stats)) != 0) {
+        fprintf(stderr, "open_video_context() error: Failed to get file stats\n");
+        return -1;
+    }
+    AVStream *video_stream = get_video_stream(vid_ctx);
+    vid_ctx->video_time_base = get_video_time_base(vid_ctx);
+    vid_ctx->audio_time_base = get_audio_time_base(vid_ctx);
+
+    if(!valid_rational(vid_ctx->video_time_base) || !valid_rational(vid_ctx->audio_time_base)) {
+        fprintf(stderr, "open_video_context() error: Invalid timebase for video[%d/%d] or audio [%d/%d]\n",
+            vid_ctx->video_time_base.num, vid_ctx->video_time_base.den, vid_ctx->audio_time_base.num, vid_ctx->audio_time_base.den);
+        return -1;
+    }
+
+    // if stream duration is invalid.. estimate it.
+    if(video_stream->duration <= 0 || video_stream->nb_frames <= 0) {
+        AVRational avg_fps = video_stream->avg_frame_rate;
+        if(!valid_rational(avg_fps)) {
+            fprintf(stderr, "open_video_context() error: Invalid duration[%ld], nb_frames[%ld] and avg_frame_rate[%d/%d]\n", video_stream->duration, video_stream->nb_frames, avg_fps.num, avg_fps.den);
+            return -1;
+        }
+        vid_ctx->fps = avg_fps.num / (double)avg_fps.den;
+        double seconds = vid_ctx->fmt_ctx->duration / (double)AV_TIME_BASE;
+        video_stream->duration = seconds * vid_ctx->video_time_base.den;
+        video_stream->nb_frames = seconds * vid_ctx->fps;
+    } else {
+        int64_t frame_duration = video_stream->duration / video_stream->nb_frames;
+        vid_ctx->fps = vid_ctx->video_time_base.den / (double)frame_duration;
+    }
+    printf("OPEN VIDEO CONTEXT [%s]\n", filename);
     return 0;
 }
 
 /* Return >=0 if OK, < 0 on fail */
 int open_format_context(VideoContext *vid_ctx, char *filename) {
-    init_video_context(vid_ctx);
+    if(vid_ctx->fmt_ctx) {
+        fprintf(stderr, "open_format_context() error: Invalid params. vid_ctx->fmt_ctx must be NULL (initialized with init_video_context())\n");
+        return -1;
+    }
     // open input file and allocate format context
     if(avformat_open_input(&(vid_ctx->fmt_ctx), filename, NULL, NULL) < 0) {
         fprintf(stderr, "Could not open source file %s\n", filename);
         return -1;
     }
+    vid_ctx->open = true;
     // retrieve stream information
     if(avformat_find_stream_info(vid_ctx->fmt_ctx, NULL) < 0) {
         fprintf(stderr, "Could not find stream information for file [%s]\n", filename);
@@ -144,11 +186,41 @@ int open_codec_context(VideoContext *vid_ctx, enum AVMediaType type) {
     }
 }
 
-/** free data inside VideoContext **/
-void free_video_context(VideoContext *vid_ctx) {
-    avcodec_free_context(&(vid_ctx->video_codec_ctx));
-    avcodec_free_context(&(vid_ctx->audio_codec_ctx));
-    avformat_close_input(&(vid_ctx->fmt_ctx));
+/** free codecs and ffmpeg struct data inside VideoContext **/
+void close_video_context(VideoContext *vc) {
+    if(vc->open) {
+        avcodec_free_context(&(vc->video_codec_ctx));
+        avcodec_free_context(&(vc->audio_codec_ctx));
+        avformat_close_input(&(vc->fmt_ctx));
+        vc->open = false;
+        printf("CLOSE VIDEO CONTEXT [%s]\n", vc->url);
+    }
+}
+
+/**
+ * Free all videoContext data (including url)
+ * @param vid_ctx VideoContext
+ */
+void free_video_context(VideoContext **vc) {
+    if(vc == NULL || *vc == NULL) {
+        return;
+    }
+    close_video_context(*vc);
+    if((*vc)->url != NULL) {
+        free((*vc)->url);
+        (*vc)->url = NULL;
+    }
+    free(*vc);
+    *vc = NULL;
+}
+
+/**
+ * Check if AVRational is valid
+ * @param  r AVRational to check
+ * @return   true if invalid
+ */
+bool valid_rational(AVRational r) {
+    return r.den > 0 && r.num > 0;
 }
 
 /**

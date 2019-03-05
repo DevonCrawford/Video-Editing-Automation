@@ -42,9 +42,7 @@ int main(int argc, char **argv) {
     if(ret < 0) {
         printf("Failed to open video output\n");
         close_video_output(&oc, false);
-        free_clip(clip1);
-        free(clip1);
-        clip1 = NULL;
+        free_clip(&clip1);
         return -1;
     }
 
@@ -65,10 +63,7 @@ int main(int argc, char **argv) {
     avcodec_parameters_free(&audio_par);
 
     close_video_output(&oc, true);
-    free_clip(clip1);
-    free(clip1);
-    clip1 = NULL;
-
+    free_clip(&clip1);
     free_sequence(&seq);
 
     return ret;

@@ -44,6 +44,48 @@ int init_sequence_cmp(Sequence *seq, double fps, int sample_rate, int (*compareF
 }
 
 /**
+ * Allocate a clip within a sequence and use a reference to the same videoContext
+ * for clips with the same url (filename)
+ * @param  seq Sequence where clip will be added (used to find videoContext)
+ * @param  url filename of clip to create
+ * @return     >= 0 on success
+ */
+Clip *seq_alloc_clip(Sequence *seq, char *url) {
+    Clip *clip = malloc(sizeof(struct Clip));
+    if(clip == NULL) {
+        return NULL;
+    }
+    Clip *seq_clip = find_clip(seq, url);
+    if(seq_clip == NULL) {
+        init_clip(clip, url);
+    } else {
+        init_clip_internal(clip);
+        clip->vid_ctx = seq_clip->vid_ctx;
+    }
+    return clip;
+}
+
+/**
+ * Find clip with the search url in a sequence
+ * @param  seq Sequence containing clips to be searched
+ * @param  url search key
+ * @return     NULL on fail, not NULL on success
+ */
+Clip *find_clip(Sequence *seq, char *url) {
+    if(seq == NULL || url == NULL) {
+        fprintf(stderr, "find_clip() error: Invalid params\n");
+    }
+    Node *currNode = seq->clips.head;
+    while(currNode != NULL) {
+        Clip *clip = (Clip *) currNode->data;
+        if(strcmp(clip->vid_ctx->url, url) == 0) {
+            return clip;
+        }
+        currNode = currNode->next;
+    }
+    return NULL;
+}
+/**
  * Get duration of sequence in frames (defined by fps)
  * @param  seq Sequence
  * @return     >= 0 on success
@@ -95,7 +137,7 @@ void sequence_add_clip(Sequence *seq, Clip *clip, int start_frame_index) {
  * @return          >= 0 on success
  */
 void sequence_add_clip_pts(Sequence *seq, Clip *clip, int64_t start_pts) {
-    printf("sequence add clip [%s], start_pts: %ld\n", clip->url, start_pts);
+    printf("sequence add clip [%s], start_pts: %ld\n", clip->vid_ctx->url, start_pts);
     if(seq == NULL || clip == NULL) {
         fprintf(stderr, "sequence_add_clip error: parameters cannot be NULL");
         return;
@@ -315,7 +357,7 @@ int64_t seq_frame_within_clip(Sequence *seq, Clip *clip, int frame_index) {
     // if sequence frame is within the clip
     if(pts_diff >= 0 && seq_pts < clip->end_pts) {
         // convert relative pts to clip time_base
-        AVRational clip_tb = clip->video_time_base;
+        AVRational clip_tb = clip->vid_ctx->video_time_base;
         if(clip_tb.num < 0 || clip_tb.den < 0) {
             return -1;
         }
@@ -383,7 +425,7 @@ int sequence_read_packet(Sequence *seq, AVPacket *pkt, bool close_clips_flag) {
     int ret = clip_read_packet(curr_clip, &tmpPkt);
     // End of clip!
     if(ret < 0) {
-        printf("End of clip[%s]\n", curr_clip->url);
+        printf("End of clip[%s]\n", curr_clip->vid_ctx->url);
         if(close_clips_flag) {
             close_clip(curr_clip);
         }
@@ -398,18 +440,13 @@ int sequence_read_packet(Sequence *seq, AVPacket *pkt, bool close_clips_flag) {
         } else {
             // move onto next clip
             Clip *next_clip = (Clip *) ((Node *)next)->data;
-            open_clip(next_clip);
+            ret = open_clip(next_clip);
+            if(ret < 0) {
+                return ret;
+            }
             return sequence_read_packet(seq, pkt, close_clips_flag);
         }
     } else {
-        // Convert original packet timestamps into sequence timestamps
-        // if(tmpPkt.stream_index == curr_clip->vid_ctx->video_stream_idx) {
-        //     tmpPkt.pts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
-        //     tmpPkt.dts = video_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
-        // } else if(tmpPkt.stream_index == curr_clip->vid_ctx->audio_stream_idx) {
-        //     tmpPkt.pts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.pts);
-        //     tmpPkt.dts = audio_pkt_to_seq_ts(seq, curr_clip, tmpPkt.dts);
-        // }
         // valid packet down here
         *pkt = tmpPkt;
         return tmpPkt.stream_index;
@@ -473,7 +510,7 @@ int64_t video_pkt_to_seq_ts(Sequence *seq, Clip *clip, int64_t orig_pkt_ts) {
     int64_t clip_ts = clip_ts_video(clip, orig_pkt_ts);
     AVRational clip_tb = get_clip_video_time_base(clip);
     if(clip_tb.num < 0 || clip_tb.den < 0) {
-        fprintf(stderr, "video time_base is invalid for clip[%s]\n", clip->url);
+        fprintf(stderr, "video time_base is invalid for clip[%s]\n", clip->vid_ctx->url);
         return -1;
     }
     // rescale clip_ts to sequence time_base
@@ -493,7 +530,7 @@ int64_t audio_pkt_to_seq_ts(Sequence *seq, Clip *clip, int64_t orig_pkt_ts) {
     int64_t clip_ts = clip_ts_audio(clip, orig_pkt_ts);
     AVRational clip_tb = get_clip_audio_time_base(clip);
     if(clip_tb.num < 0 || clip_tb.den < 0) {
-        fprintf(stderr, "audio time_base is invalid for clip[%s]\n", clip->url);
+        fprintf(stderr, "audio time_base is invalid for clip[%s]\n", clip->vid_ctx->url);
         return -1;
     }
     // rescale clip_ts into sequence time_base
@@ -527,8 +564,8 @@ char *print_sequence(Sequence *seq) {
     Node *currNode = seq->clips.head;
     for(int i = 0; currNode != NULL; i++) {
         Clip *c = (Clip *) currNode->data;
-        sprintf(buf, "Clip [%d]\nurl: %s\nstart_pts: %ld\nend_pts: %ld\norig_start_pts: %ld\norig_end_pts: %ld\n",
-                i, c->url, c->start_pts, c->end_pts, c->orig_start_pts, c->orig_end_pts);
+        sprintf(buf, "Clip [%d]\nurl: %s\nstart_pts: %ld\nend_pts: %ld\norig_start_pts: %ld\norig_end_pts: %ld\nvid_ctx: %p\n",
+                i, c->vid_ctx->url, c->start_pts, c->end_pts, c->orig_start_pts, c->orig_end_pts, c->vid_ctx);
         catVars(&str, 1, buf);
         currNode = currNode->next;
     }
@@ -548,7 +585,7 @@ void example_sequence_read_packets(Sequence *seq, bool close_clips_flag) {
         if(clip == NULL) {
             printf("clip == NULL, printing raw pkt pts: %ld\n", pkt.pts);
         } else {
-            printf("clip: %s | ", clip->url);
+            printf("clip: %s | ", clip->vid_ctx->url);
 
             if(pkt.stream_index == clip->vid_ctx->video_stream_idx) {
                 printf("Video packet! pts: %ld, dts: %ld, frame: %ld\n", pkt.pts, pkt.dts,
